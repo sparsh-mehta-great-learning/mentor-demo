@@ -17,9 +17,10 @@ jobs:
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
+          git config --global pull.rebase false
       - name: Push to Hugging Face Hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git pull https://sri1996:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/sri1996/main_app main || true
-          git push https://sri1996:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/sri1996/main_app main
+          git pull https://sri1996:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/sri1996/main_app main --allow-unrelated-histories || true
+          git push -f https://sri1996:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/sri1996/main_app main
