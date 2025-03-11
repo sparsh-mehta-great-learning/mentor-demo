@@ -25,8 +25,6 @@ import sys
 import multiprocessing
 import concurrent.futures
 import hashlib
-import threading
-import psutil
 
 # Set up logging
 logging.basicConfig(
@@ -34,43 +32,6 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-# Global variable to track GPU activity
-gpu_activity_thread = None
-gpu_activity_running = False
-
-def keep_gpu_active():
-    """Keep GPU active by performing small operations"""
-    global gpu_activity_running
-    while gpu_activity_running:
-        try:
-            if torch.cuda.is_available():
-                # Create a small tensor and perform operations
-                x = torch.randn(100, 100).cuda()
-                y = torch.randn(100, 100).cuda()
-                z = torch.matmul(x, y)
-                del x, y, z
-                torch.cuda.empty_cache()
-            time.sleep(5)  # Sleep for 5 seconds between operations
-        except Exception as e:
-            logger.warning(f"Error in GPU keep-alive: {e}")
-            time.sleep(5)
-
-def start_gpu_activity():
-    """Start the GPU activity monitoring thread"""
-    global gpu_activity_thread, gpu_activity_running
-    if gpu_activity_thread is None or not gpu_activity_thread.is_alive():
-        gpu_activity_running = True
-        gpu_activity_thread = threading.Thread(target=keep_gpu_active)
-        gpu_activity_thread.daemon = True
-        gpu_activity_thread.start()
-
-def stop_gpu_activity():
-    """Stop the GPU activity monitoring thread"""
-    global gpu_activity_running
-    gpu_activity_running = False
-    if gpu_activity_thread and gpu_activity_thread.is_alive():
-        gpu_activity_thread.join()
 
 class AudioProcessingError(Exception):
     """Custom exception for audio processing errors"""
@@ -1073,18 +1034,29 @@ class CostCalculator:
 class MentorEvaluator:
     """Main class for video evaluation"""
     def __init__(self, model_cache_dir: Optional[str] = None):
-        self.model_cache_dir = model_cache_dir
-        self._whisper_model = None
-        self.feature_extractor = AudioFeatureExtractor()
-        self.content_analyzer = ContentAnalyzer(os.getenv("OPENAI_API_KEY", ""))
-        self.recommendation_generator = RecommendationGenerator(os.getenv("OPENAI_API_KEY", ""))
-        self.cost_calculator = CostCalculator()
-        # Start GPU activity monitoring
-        start_gpu_activity()
-
-    def __del__(self):
-        # Stop GPU activity monitoring when the evaluator is destroyed
-        stop_gpu_activity()
+        # Fix potential API key issue
+        self.api_key = st.secrets.get("OPENAI_API_KEY")  # Use get() method
+        if not self.api_key:
+            raise ValueError("OpenAI API key not found in secrets")
+        
+        # Add error handling for model cache directory
+        try:
+            if model_cache_dir:
+                self.model_cache_dir = Path(model_cache_dir)
+            else:
+                self.model_cache_dir = Path.home() / ".cache" / "whisper"
+            self.model_cache_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            raise RuntimeError(f"Failed to create model cache directory: {e}")
+            
+        # Initialize components with proper error handling
+        try:
+            self.feature_extractor = AudioFeatureExtractor()
+            self.content_analyzer = ContentAnalyzer(self.api_key)
+            self.recommendation_generator = RecommendationGenerator(self.api_key)
+            self.cost_calculator = CostCalculator()
+        except Exception as e:
+            raise RuntimeError(f"Failed to initialize components: {e}")
 
     def _get_cached_result(self, key: str) -> Optional[Any]:
         """Get cached result if available and not expired"""
@@ -1273,15 +1245,11 @@ class MentorEvaluator:
             raise RuntimeError(f"Analysis failed: {str(e)}")
 
     def _transcribe_audio(self, audio_path: str, progress_callback=None) -> str:
-        """Transcribe audio with optimized segment detection and detailed progress tracking"""
+        """Transcribe audio using Whisper with direct approach and timing"""
         try:
             if progress_callback:
                 progress_callback(0.1, "Loading transcription model...")
 
-            # Check if GPU is available and set device accordingly
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            compute_type = "float16" if device == "cuda" else "int8"
-            
             # Generate cache key based on file content
             cache_key = f"transcript_{hashlib.md5(open(audio_path, 'rb').read()).hexdigest()}"
             
@@ -1295,122 +1263,42 @@ class MentorEvaluator:
             # Add validation for audio file
             if not os.path.exists(audio_path):
                 raise FileNotFoundError(f"Audio file not found: {audio_path}")
-            
-            try:
-                audio_info = sf.info(audio_path)
-                if audio_info.samplerate != 16000:
-                    logger.warning(f"Audio sample rate is {audio_info.samplerate}Hz, expected 16000Hz")
-            except Exception as e:
-                logger.error(f"Error checking audio file: {e}")
-                raise ValueError(f"Invalid audio file: {str(e)}")
 
             if progress_callback:
                 progress_callback(0.2, "Initializing model...")
 
-            # Initialize model with optimized settings and proper error handling
+            # Start timing
+            start_time = time.time()
+
             try:
-                # Optimize model settings for GPU
-                model = WhisperModel(
-                    "medium",
-                    device=device,
-                    compute_type=compute_type,
-                    download_root=self.model_cache_dir,
-                    local_files_only=False,
-                    cpu_threads=4,
-                    num_workers=2,
-                    # Add GPU-specific optimizations
-                    device_index=0,  # Use first GPU
-                    asr_options={
-                        "beam_size": 5,
-                        "best_of": 5,
-                        "temperature": 0.0,
-                        "condition_on_previous_text": True,
-                        "compression_ratio_threshold": 1.2,
-                        "logprob_threshold": -1.0,
-                        "no_speech_threshold": 0.6,
-                        "word_timestamps": True
-                    }
-                )
-                
-                # Force GPU memory allocation
-                if device == "cuda":
-                    torch.cuda.empty_cache()
-                    # Allocate some memory to prevent GPU from going idle
-                    dummy_tensor = torch.zeros(1).cuda()
-                
-            except Exception as e:
-                logger.error(f"Error initializing Whisper model: {e}")
-                raise RuntimeError(f"Failed to initialize transcription model: {str(e)}")
+                # Load and transcribe with Whisper
+                model = whisper.load_model("medium")
+                result = model.transcribe(audio_path)
+                transcript = result["text"]
 
-            if progress_callback:
-                progress_callback(0.3, "Starting transcription...")
+                # Calculate elapsed time
+                end_time = time.time()
+                elapsed_time = end_time - start_time
+                logger.info(f"Transcription completed in {elapsed_time:.2f} seconds")
 
-            # Get audio duration for progress calculation
-            total_duration = audio_info.duration
+                if progress_callback:
+                    progress_callback(0.9, f"Transcription completed in {elapsed_time:.2f} seconds")
 
-            # Transcribe with optimized VAD settings and error handling
-            try:
-                segments, _ = model.transcribe(
-                    audio_path,
-                    beam_size=5,
-                    word_timestamps=True,
-                    vad_filter=True,
-                    vad_parameters=dict(
-                        min_silence_duration_ms=500,
-                        speech_pad_ms=100,
-                        threshold=0.3,
-                        min_speech_duration_ms=250
-                    ),
-                    language='en'
-                )
+                # Validate transcript
+                if not transcript.strip():
+                    raise ValueError("Transcription produced empty result")
+
+                # Cache the result
+                st.session_state[cache_key] = transcript
+
+                if progress_callback:
+                    progress_callback(1.0, "Transcription complete!")
+
+                return transcript
+
             except Exception as e:
                 logger.error(f"Error during transcription: {e}")
                 raise RuntimeError(f"Transcription failed: {str(e)}")
-
-            # Process segments with better error handling and validation
-            transcript_parts = []
-            segments = list(segments)  # Convert generator to list
-            total_segments = len(segments)
-            batch_size = 10
-            
-            if total_segments == 0:
-                logger.warning("No speech segments detected")
-                raise ValueError("No speech detected in audio file")
-
-            for i, segment in enumerate(segments, 1):
-                if segment.text:  # Only add non-empty segments
-                    # Validate segment text
-                    cleaned_text = segment.text.strip()
-                    if cleaned_text:
-                        transcript_parts.append(cleaned_text)
-                
-                # Update progress less frequently for better performance
-                if i % 5 == 0 or i == total_segments:
-                    progress = min(i / total_segments, 1.0)
-                    progress = 0.3 + (progress * 0.6)
-                    
-                    current_batch = (i - 1) // batch_size + 1
-                    total_batches = (total_segments + batch_size - 1) // batch_size
-
-                    if progress_callback:
-                        progress_callback(
-                            progress,
-                            f"Transcribing Batch {current_batch}/{total_batches}",
-                            f"Processing segment {i} of {total_segments}"
-                        )
-
-            # Validate final transcript
-            transcript = ' '.join(transcript_parts)
-            if not transcript.strip():
-                raise ValueError("Transcription produced empty result")
-
-            # Cache the result
-            st.session_state[cache_key] = transcript
-
-            if progress_callback:
-                progress_callback(1.0, "Transcription complete!")
-
-            return transcript
 
         except Exception as e:
             logger.error(f"Error in transcription: {e}")
@@ -1541,7 +1429,7 @@ class MentorEvaluator:
 
 def validate_video_file(file_path: str):
     """Validate video file before processing"""
-    MAX_SIZE = 2 * 1024 * 1024 * 1024  # 1GB limit
+    MAX_SIZE = 1024 * 1024 * 1024  # 500MB limit
     
     if os.path.getsize(file_path) > MAX_SIZE:
         raise ValueError(f"File size exceeds {MAX_SIZE/1024/1024}MB limit")
@@ -1656,7 +1544,6 @@ def display_evaluation(evaluation: Dict[str, Any]):
                     # Add interpretation guide with stricter thresholds
                     st.info("""
                     **Monotone Analysis:**
-                    - Monotone Score: 0-1 (>0.4 indicates monotone speech)
                     - Pitch Variation: 20-40% is optimal
                     - Direction Changes: 300-600/min is optimal
                     
@@ -2418,9 +2305,6 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
 
 def main():
     try:
-        # Start GPU activity monitoring at application startup
-        start_gpu_activity()
-        
         # Set page config must be the first Streamlit command
         st.set_page_config(page_title="🎓 Mentor Demo Review System", layout="wide")
         
