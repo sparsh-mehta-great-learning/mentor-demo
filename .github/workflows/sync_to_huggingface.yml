@@ -13,7 +13,13 @@ jobs:
         with:
           fetch-depth: 0
           lfs: true
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
       - name: Push to Hugging Face Hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: git push https://sri1996:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/sri1996/main_app main
+        run: |
+          git pull https://sri1996:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/sri1996/main_app main || true
+          git push https://sri1996:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/sri1996/main_app main
