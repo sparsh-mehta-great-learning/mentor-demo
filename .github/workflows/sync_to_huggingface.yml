@@ -22,5 +22,5 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git pull https://sri1996:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/sri1996/main_app main --allow-unrelated-histories || true
-          git push -f https://sri1996:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/sri1996/main_app main
+          git pull https://product-ai-gl:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/product-ai-gl/mentor-ama-review main --allow-unrelated-histories || true
+          git push -f https://product-ai-gl:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/product-ai-gl/mentor-ama-review main
