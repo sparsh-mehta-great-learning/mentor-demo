@@ -22,5 +22,7 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git pull https://product-ai-gl:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/product-ai-gl/mentor-ama-review main --allow-unrelated-histories || true
-          git push -f https://product-ai-gl:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/product-ai-gl/mentor-ama-review main
+          # Try to pull, but don't fail if it's the first push
+          git pull https://product-ai-gl:$HF_TOKEN@huggingface.co/spaces/product-ai-gl/mentor-ama-review main --allow-unrelated-histories || true
+          # Force push to HF Hub
+          git push -f https://product-ai-gl:$HF_TOKEN@huggingface.co/spaces/product-ai-gl/mentor-ama-review main
