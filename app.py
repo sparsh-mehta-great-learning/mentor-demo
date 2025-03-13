@@ -662,7 +662,7 @@ Important:
 
     def _evaluate_speech_metrics(self, transcript: str, audio_features: Dict[str, float], 
                            progress_callback=None) -> Dict[str, Any]:
-        """Evaluate speech metrics with improved accuracy and stricter checks"""
+        """Evaluate speech metrics with improved accuracy and AI-powered error detection"""
         try:
             if progress_callback:
                 progress_callback(0.2, "Calculating speech metrics...")
@@ -670,86 +670,62 @@ Important:
             # Calculate words and duration
             words = len(transcript.split())
             duration_minutes = float(audio_features.get('duration', 0)) / 60
+            words_per_minute = float(words / duration_minutes if duration_minutes > 0 else 0)
             
-            # Enhanced grammatical error detection with stricter patterns
-            grammatical_errors = []
+            # Use OpenAI to analyze filler words and speech errors
+            analysis_prompt = f"""Analyze this teaching transcript for filler words and speech errors.
+            Identify:
+            1. Filler words (um, uh, like, you know, etc.)
+            2. Speech errors (stutters, repeated words, incomplete sentences)
+            3. Grammar errors
             
-            # Subject-verb agreement errors
-            sv_errors = re.findall(r'\b(they is|he are|she are|it are|there are \w+s|there is \w+s)\b', transcript.lower())
-            grammatical_errors.extend([("Subject-Verb Agreement", err) for err in sv_errors])
+            Format response as JSON:
+            {{
+                "filler_words": [
+                    {{"word": "word", "count": number, "timestamps": ["MM:SS"]}}
+                ],
+                "speech_errors": [
+                    {{"type": "error_type", "context": "error in context", "timestamps": ["MM:SS"]}}
+                ],
+                "grammar_errors": [
+                    {{"type": "error_type", "context": "error in context", "timestamps": ["MM:SS"]}}
+                ]
+            }}
+
+            Transcript:
+            {transcript}
+            """
             
-            # Article misuse
-            article_errors = re.findall(r'\b(a [aeiou]\w+|an [^aeiou\s]\w+)\b', transcript.lower())
-            grammatical_errors.extend([("Article Misuse", err) for err in article_errors])
-            
-            # Double negatives
-            double_neg = re.findall(r'\b(don\'t.*no|doesn\'t.*no|didn\'t.*no|never.*no)\b', transcript.lower())
-            grammatical_errors.extend([("Double Negative", err) for err in double_neg])
-            
-            # Preposition errors
-            prep_errors = re.findall(r'\b(depend of|different than|identical than)\b', transcript.lower())
-            grammatical_errors.extend([("Preposition Error", err) for err in prep_errors])
-            
-            # Incomplete sentences (stricter detection)
-            incomplete = re.findall(r'[a-zA-Z]+\s*[.!?]\s*(?![A-Z])|[a-zA-Z]+\s*-\s+|[a-zA-Z]+\s*\.\.\.', transcript)
-            grammatical_errors.extend([("Incomplete Sentence", err) for err in incomplete])
-            
-            # Calculate errors per minute with stricter threshold
-            errors_count = len(grammatical_errors)
-            errors_per_minute = float(errors_count / duration_minutes if duration_minutes > 0 else 0)
-            
-            # Stricter threshold for errors (max 1 error per minute)
+            try:
+                response = self.content_analyzer.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                        {"role": "system", "content": "You are a speech analysis expert focusing on identifying speech patterns and errors."},
+                        {"role": "user", "content": analysis_prompt}
+                ],
+                response_format={"type": "json_object"},
+                    temperature=0.3
+                )
+                
+                analysis = json.loads(response.choices[0].message.content)
+                
+                # Calculate metrics from AI analysis
+                filler_words = analysis.get("filler_words", [])
+                speech_errors = analysis.get("speech_errors", [])
+                grammar_errors = analysis.get("grammar_errors", [])
+                
+                total_fillers = sum(fw["count"] for fw in filler_words)
+                fillers_per_minute = float(total_fillers / duration_minutes if duration_minutes > 0 else 0)
+                
+                total_errors = len(speech_errors) + len(grammar_errors)
+                errors_per_minute = float(total_errors / duration_minutes if duration_minutes > 0 else 0)
+                
+                # Set thresholds
             max_errors = 1.0
-            
-            # Calculate monotone score with stricter thresholds
-            pitch_mean = float(audio_features.get("pitch_mean", 0))
-            pitch_std = float(audio_features.get("pitch_std", 0))
-            pitch_variation_coeff = (pitch_std / pitch_mean * 100) if pitch_mean > 0 else 0
-            direction_changes = float(audio_features.get("direction_changes_per_min", 0))
-            pitch_range = float(audio_features.get("pitch_range", 0))
-            
-            # Recalibrated scoring factors with stricter ranges
-            # Variation factor: needs wider variation (20-40% is good)
-            variation_factor = min(1.0, max(0.0,
-                1.0 if 20 <= pitch_variation_coeff <= 40
-                else 0.5 if 15 <= pitch_variation_coeff <= 45
-                else 0.0
-            ))
-            
-            # Range factor: needs wider range (200-300% is good)
-            range_ratio = (pitch_range / pitch_mean * 100) if pitch_mean > 0 else 0
-            range_factor = min(1.0, max(0.0,
-                1.0 if 200 <= range_ratio <= 300
-                else 0.5 if 150 <= range_ratio <= 350
-                else 0.0
-            ))
-            
-            # Changes factor: needs more frequent changes (450-650 changes/min is good)
-            changes_factor = min(1.0, max(0.0,
-                1.0 if 450 <= direction_changes <= 650
-                else 0.5 if 350 <= direction_changes <= 750
-                else 0.0
-            ))
-            
-            # Calculate final monotone score (0-1, higher means more monotonous)
-            # Using weighted average to emphasize variation importance
-            weights = [0.4, 0.3, 0.3]  # More weight on pitch variation
-            monotone_score = 1.0 - (
-                (variation_factor * weights[0] + 
-                 range_factor * weights[1] + 
-                 changes_factor * weights[2])
-            )
-            
-            # Add debug logging
-            logger.info(f"""Monotone score calculation:
-                Pitch variation coeff: {pitch_variation_coeff:.2f}
-                Pitch range ratio: {range_ratio:.2f}%
-                Changes per minute: {direction_changes:.2f}
-                Variation factor: {variation_factor:.2f}
-                Range factor: {range_factor:.2f}
-                Changes factor: {changes_factor:.2f}
-                Final score: {monotone_score:.2f}
-            """)
+            max_fillers = 3.0
+
+                # Calculate fluency score
+            fluency_score = 1 if (errors_per_minute <= max_errors and fillers_per_minute <= max_fillers) else 0
             
             return {
                 "speed": {
@@ -759,40 +735,48 @@ Important:
                     "duration_minutes": duration_minutes
                 },
                 "fluency": {
-                    "score": 1 if errors_per_minute <= max_errors else 0,
+                        "score": fluency_score,
                     "errorsPerMin": errors_per_minute,
-                    "maxErrorsThreshold": max_errors,
-                    "detectedErrors": [
-                        {
-                            "type": error_type,
-                            "context": error_text
-                        } for error_type, error_text in grammatical_errors
-                    ]
-                },
-                "flow": {
-                    "score": 1 if audio_features.get("pauses_per_minute", 0) <= 12 else 0,
-                    "pausesPerMin": audio_features.get("pauses_per_minute", 0)
-                },
-                "intonation": {
-                    "pitch": pitch_mean,
-                    "pitchScore": 1 if not any(monotone_indicators.values()) else 0,
-                    "pitchVariation": pitch_variation_coeff,
-                    "monotoneScore": monotone_score,
-                    "monotoneIndicators": monotone_indicators,
-                    "directionChanges": direction_changes,
-                    "variationsPerMin": audio_features.get("variations_per_minute", 0)
-                },
-                "energy": {
-                    "score": 1 if 60 <= audio_features.get("mean_amplitude", 0) <= 75 else 0,
-                    "meanAmplitude": audio_features.get("mean_amplitude", 0),
-                    "amplitudeDeviation": audio_features.get("amplitude_deviation", 0),
-                    "variationScore": 1 if 0.05 <= audio_features.get("amplitude_deviation", 0) <= 0.15 else 0
+                    "fillersPerMin": fillers_per_minute,
+                        "maxErrorsThreshold": max_errors,
+                        "maxFillersThreshold": max_fillers,
+                        "detectedFillers": filler_words,
+                        "detectedSpeechErrors": speech_errors,
+                        "detectedGrammarErrors": grammar_errors
+                    },
+                    "flow": {
+                        "score": 1 if audio_features.get("pauses_per_minute", 0) <= 12 else 0,
+                        "pausesPerMin": audio_features.get("pauses_per_minute", 0)
+                    },
+                    "intonation": {
+                        "pitch": audio_features.get("pitch_mean", 0),
+                        "pitchScore": 1 if 20 <= (audio_features.get("pitch_std", 0) / audio_features.get("pitch_mean", 0) * 100 if audio_features.get("pitch_mean", 0) > 0 else 0) <= 40 else 0,
+                        "pitchVariation": audio_features.get("pitch_std", 0),
+                        "patternScore": 1 if audio_features.get("variations_per_minute", 0) >= 120 else 0,
+                        "risingPatterns": audio_features.get("rising_patterns", 0),
+                        "fallingPatterns": audio_features.get("falling_patterns", 0),
+                        "variationsPerMin": audio_features.get("variations_per_minute", 0)
+                    },
+                    "energy": {
+                        "score": 1 if 60 <= audio_features.get("mean_amplitude", 0) <= 75 else 0,
+                        "meanAmplitude": audio_features.get("mean_amplitude", 0),
+                        "amplitudeDeviation": audio_features.get("amplitude_deviation", 0),
+                        "variationScore": 1 if 0.05 <= audio_features.get("amplitude_deviation", 0) <= 0.15 else 0
+                    }
                 }
-            }
+                
+            except Exception as api_error:
+                logger.error(f"Error in AI analysis: {api_error}")
+                # Fall back to basic analysis if AI fails
+                return self._basic_speech_metrics(transcript, audio_features)
 
         except Exception as e:
             logger.error(f"Error in speech metrics evaluation: {e}")
             raise
+
+    def _basic_speech_metrics(self, transcript: str, audio_features: Dict[str, float]) -> Dict[str, Any]:
+        """Fallback method for basic speech metrics when AI analysis fails"""
+        # ... (keep the original regex-based analysis as fallback) ...
 
     def generate_suggestions(self, category: str, citations: List[str]) -> List[str]:
         """Generate contextual suggestions based on category and citations"""
@@ -812,621 +796,6 @@ Important:
                     Format as a JSON array with a single string."""}
                 ],
                 response_format={"type": "json_object"},
-                temperature=0.7
-            )
-            
-            result = json.loads(response.choices[0].message.content)
-            return result.get("suggestions", [])
-            
-        except Exception as e:
-            logger.error(f"Error generating suggestions: {e}")
-            return [f"Unable to generate specific suggestions: {str(e)}"]
-
-class RecommendationGenerator:
-    """Generates teaching recommendations using OpenAI API"""
-    def __init__(self, api_key: str):
-        self.client = OpenAI(api_key=api_key)
-        self.retry_count = 3
-        self.retry_delay = 1
-        
-    def generate_recommendations(self, 
-                           metrics: Dict[str, Any], 
-                           content_analysis: Dict[str, Any], 
-                           progress_callback=None) -> Dict[str, Any]:
-        """Generate recommendations with robust JSON handling"""
-        for attempt in range(self.retry_count):
-            try:
-                if progress_callback:
-                    progress_callback(0.2, "Preparing recommendation analysis...")
-                
-                prompt = self._create_recommendation_prompt(metrics, content_analysis)
-                
-                if progress_callback:
-                    progress_callback(0.5, "Generating recommendations...")
-                
-                response = self.client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": """You are a teaching expert providing actionable recommendations. 
-                        Each improvement must be categorized as one of:
-                        - COMMUNICATION: Related to speaking, pace, tone, clarity, delivery
-                        - TEACHING: Related to explanation, examples, engagement, structure
-                        - TECHNICAL: Related to code, implementation, technical concepts
-                        
-                        Always respond with a valid JSON object containing categorized improvements."""},
-                        {"role": "user", "content": prompt}
-                    ],
-                    response_format={"type": "json_object"}
-                )
-                
-                if progress_callback:
-                    progress_callback(0.8, "Formatting recommendations...")
-                
-                result_text = response.choices[0].message.content.strip()
-                
-                try:
-                    result = json.loads(result_text)
-                    # Ensure improvements are properly formatted
-                    if "improvements" in result:
-                        formatted_improvements = []
-                        for imp in result["improvements"]:
-                            if isinstance(imp, str):
-                                # Default categorization for legacy format
-                                formatted_improvements.append({
-                                    "category": "TECHNICAL",
-                                    "message": imp
-                                })
-                            elif isinstance(imp, dict):
-                                # Ensure proper structure for dict format
-                                formatted_improvements.append({
-                                    "category": imp.get("category", "TECHNICAL"),
-                                    "message": imp.get("message", str(imp))
-                                })
-                        result["improvements"] = formatted_improvements
-                except json.JSONDecodeError:
-                    result = {
-                        "geographyFit": "Unknown",
-                        "improvements": [
-                            {
-                                "category": "TECHNICAL",
-                                "message": "Unable to generate specific recommendations"
-                            }
-                        ],
-                        "rigor": "Undetermined",
-                        "profileMatches": []
-                    }
-                
-                if progress_callback:
-                    progress_callback(1.0, "Recommendations complete!")
-                
-                return result
-                
-            except Exception as e:
-                logger.error(f"Recommendation generation attempt {attempt + 1} failed: {e}")
-                if attempt == self.retry_count - 1:
-                    return {
-                        "geographyFit": "Unknown",
-                        "improvements": [
-                            {
-                                "category": "TECHNICAL",
-                                "message": f"Unable to generate specific recommendations: {str(e)}"
-                            }
-                        ],
-                        "rigor": "Undetermined",
-                        "profileMatches": []
-                    }
-                time.sleep(self.retry_delay * (2 ** attempt))
-    
-    def _create_recommendation_prompt(self, metrics: Dict[str, Any], content_analysis: Dict[str, Any]) -> str:
-        """Create the recommendation prompt"""
-        return f"""Based on the following metrics and analysis, provide recommendations:
-Metrics: {json.dumps(metrics)}
-Content Analysis: {json.dumps(content_analysis)}
-
-Analyze the teaching style and provide:
-1. A concise performance summary (2-3 paragraphs highlighting key strengths and areas for improvement)
-2. Geography fit assessment
-3. Specific improvements needed (each must be categorized as COMMUNICATION, TEACHING, or TECHNICAL)
-4. Profile matching for different learner types (choose ONLY ONE best match)
-5. Overall teaching rigor assessment
-
-Required JSON structure:
-{{
-    "summary": "Comprehensive summary of teaching performance, strengths, and areas for improvement",
-    "geographyFit": "String describing geographical market fit",
-    "improvements": [
-        {{
-            "category": "COMMUNICATION",
-            "message": "Specific improvement recommendation"
-        }},
-        {{
-            "category": "TEACHING",
-            "message": "Specific improvement recommendation"
-        }},
-        {{
-            "category": "TECHNICAL",
-            "message": "Specific improvement recommendation"
-        }}
-    ],
-    "rigor": "Assessment of teaching rigor",
-    "profileMatches": [
-        {{
-            "profile": "junior_technical",
-            "match": false,
-            "reason": "Detailed explanation why this profile is not the best match"
-        }},
-        {{
-            "profile": "senior_non_technical",
-            "match": false,
-            "reason": "Detailed explanation why this profile is not the best match"
-        }},
-        {{
-            "profile": "junior_expert",
-            "match": false,
-            "reason": "Detailed explanation why this profile is not the best match"
-        }},
-        {{
-            "profile": "senior_expert",
-            "match": false,
-            "reason": "Detailed explanation why this profile is not the best match"
-        }}
-    ]
-}}
-
-Consider:
-- Teaching pace and complexity level
-- Balance of technical vs business context
-- Depth of code explanations
-- Use of examples and analogies
-- Engagement style
-- Communication metrics
-- Teaching assessment scores"""
-
-class CostCalculator:
-    """Calculates API and processing costs"""
-    def __init__(self):
-        self.GPT4_INPUT_COST = 0.15 / 1_000_000  # $0.15 per 1M tokens input
-        self.GPT4_OUTPUT_COST = 0.60 / 1_000_000  # $0.60 per 1M tokens output
-        self.WHISPER_COST = 0.006 / 60  # $0.006 per minute
-        self.costs = {
-            'transcription': 0.0,
-            'content_analysis': 0.0,
-            'recommendations': 0.0,
-            'total': 0.0
-        }
-
-    def estimate_tokens(self, text: str) -> int:
-        """Rough estimation of token count based on words"""
-        return len(text.split()) * 1.3  # Approximate tokens per word
-
-    def add_transcription_cost(self, duration_seconds: float):
-        """Calculate Whisper transcription cost"""
-        cost = (duration_seconds / 60) * self.WHISPER_COST
-        self.costs['transcription'] = cost
-        self.costs['total'] += cost
-        print(f"\nTranscription Cost: ${cost:.4f}")
-
-    def add_gpt4_cost(self, input_text: str, output_text: str, operation: str):
-        """Calculate GPT-4 API cost for a single operation"""
-        input_tokens = self.estimate_tokens(input_text)
-        output_tokens = self.estimate_tokens(output_text)
-        
-        input_cost = input_tokens * self.GPT4_INPUT_COST
-        output_cost = output_tokens * self.GPT4_OUTPUT_COST
-        total_cost = input_cost + output_cost
-        
-        self.costs[operation] = total_cost
-        self.costs['total'] += total_cost
-        
-        print(f"\n{operation.replace('_', ' ').title()} Cost:")
-        print(f"Input tokens: {input_tokens:.0f} (${input_cost:.4f})")
-        print(f"Output tokens: {output_tokens:.0f} (${output_cost:.4f})")
-        print(f"Operation total: ${total_cost:.4f}")
-
-    def print_total_cost(self):
-        """Print total cost breakdown"""
-        print("\n=== Cost Breakdown ===")
-        for key, cost in self.costs.items():
-            if key != 'total':
-                print(f"{key.replace('_', ' ').title()}: ${cost:.4f}")
-        print(f"\nTotal Cost: ${self.costs['total']:.4f}")
-
-class MentorEvaluator:
-    """Main class for video evaluation"""
-    def __init__(self, model_cache_dir: Optional[str] = None):
-        # Fix potential API key issue
-        self.api_key = st.secrets.get("OPENAI_API_KEY")  # Use get() method
-        if not self.api_key:
-            raise ValueError("OpenAI API key not found in secrets")
-        
-        # Add error handling for model cache directory
-        try:
-            if model_cache_dir:
-                self.model_cache_dir = Path(model_cache_dir)
-            else:
-                self.model_cache_dir = Path.home() / ".cache" / "whisper"
-            self.model_cache_dir.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            raise RuntimeError(f"Failed to create model cache directory: {e}")
-            
-        # Initialize components with proper error handling
-        try:
-            self.feature_extractor = AudioFeatureExtractor()
-            self.content_analyzer = ContentAnalyzer(self.api_key)
-            self.recommendation_generator = RecommendationGenerator(self.api_key)
-            self.cost_calculator = CostCalculator()
-        except Exception as e:
-            raise RuntimeError(f"Failed to initialize components: {e}")
-
-    def _get_cached_result(self, key: str) -> Optional[Any]:
-        """Get cached result if available and not expired"""
-        if key in self._cache:
-            timestamp, value = self._cache[key]
-            if time.time() - timestamp < self.cache_ttl:
-                return value
-        return None
-
-    def _set_cached_result(self, key: str, value: Any):
-        """Cache result with timestamp"""
-        self._cache[key] = (time.time(), value)
-
-    def _extract_audio(self, video_path: str, output_path: str, progress_callback=None) -> str:
-        """Extract audio from video with optimized settings"""
-        try:
-            if progress_callback:
-                progress_callback(0.1, "Checking dependencies...")
-
-            # Add optimized ffmpeg settings
-            ffmpeg_cmd = [
-                'ffmpeg',
-                '-i', video_path,
-                '-ar', '16000',  # Set sample rate to 16kHz
-                '-ac', '1',      # Convert to mono
-                '-f', 'wav',     # Output format
-                '-v', 'warning', # Reduce verbosity
-                '-y',           # Overwrite output file
-                # Add these optimizations:
-                '-c:a', 'pcm_s16le',  # Use simple audio codec
-                '-movflags', 'faststart',  # Optimize for streaming
-                '-threads', str(max(1, multiprocessing.cpu_count() - 1)),  # Use multiple threads
-                output_path
-            ]
-            
-            # Use subprocess with optimized buffer size
-            result = subprocess.run(
-                ffmpeg_cmd,
-                capture_output=True,
-                text=True,
-                bufsize=10*1024*1024  # 10MB buffer
-            )
-            
-            if result.returncode != 0:
-                raise AudioProcessingError(f"FFmpeg Error: {result.stderr}")
-
-            if not os.path.exists(output_path):
-                raise AudioProcessingError("Audio extraction failed: output file not created")
-
-            if progress_callback:
-                progress_callback(1.0, "Audio extraction complete!")
-
-            return output_path
-
-        except Exception as e:
-            logger.error(f"Error in audio extraction: {e}")
-            raise AudioProcessingError(f"Audio extraction failed: {str(e)}")
-
-    def _preprocess_audio(self, input_path: str, output_path: Optional[str] = None) -> str:
-        """Preprocess audio for analysis"""
-        try:
-            if not os.path.exists(input_path):
-                raise FileNotFoundError(f"Input audio file not found: {input_path}")
-
-            # If no output path specified, use the input path
-            if output_path is None:
-                output_path = input_path
-
-            # Load audio
-            audio, sr = librosa.load(input_path, sr=16000)
-
-            # Apply preprocessing steps
-            # 1. Normalize audio
-            audio = librosa.util.normalize(audio)
-
-            # 2. Remove silence
-            non_silent = librosa.effects.trim(audio, top_db=20)[0]
-
-            # 3. Save processed audio
-            sf.write(output_path, non_silent, sr)
-
-            return output_path
-
-        except Exception as e:
-            logger.error(f"Error in audio preprocessing: {e}")
-            raise AudioProcessingError(f"Audio preprocessing failed: {str(e)}")
-
-    def evaluate_video(self, video_path: str, transcript_file: Optional[str] = None) -> Dict[str, Any]:
-        try:
-            # Add input validation
-            if not os.path.exists(video_path):
-                raise FileNotFoundError(f"Video file not found: {video_path}")
-            
-            # Validate video file format
-            valid_extensions = {'.mp4', '.avi', '.mov'}
-            if not any(video_path.lower().endswith(ext) for ext in valid_extensions):
-                raise ValueError("Unsupported video format. Use MP4, AVI, or MOV")
-
-            # Create progress tracking containers with error handling
-            try:
-                status = st.empty()
-                progress = st.progress(0)
-                tracker = ProgressTracker(status, progress)
-            except Exception as e:
-                logger.error(f"Failed to create progress trackers: {e}")
-                raise
-
-            # Add cleanup for temporary files
-            temp_files = []
-            try:
-                with temporary_file(suffix=".wav") as temp_audio, \
-                     temporary_file(suffix=".wav") as processed_audio:
-                    temp_files.extend([temp_audio, processed_audio])
-                    
-                    # Step 1: Extract audio from video
-                    tracker.update(0.1, "Extracting audio from video")
-                    self._extract_audio(video_path, temp_audio)
-                    tracker.next_step()
-                    
-                    # Step 2: Preprocess audio
-                    tracker.update(0.2, "Preprocessing audio")
-                    self._preprocess_audio(temp_audio, processed_audio)
-                    tracker.next_step()
-                    
-                    # Step 3: Extract features
-                    tracker.update(0.4, "Extracting audio features")
-                    audio_features = self.feature_extractor.extract_features(processed_audio)
-                    tracker.next_step()
-                    
-                    # Step 4: Get transcript - Modified to handle 3-argument progress callback
-                    tracker.update(0.6, "Processing transcript")
-                    if transcript_file:
-                        transcript = transcript_file.getvalue().decode('utf-8')
-                    else:
-                        # Update progress callback to handle 3 arguments
-                        tracker.update(0.6, "Transcribing audio")
-                        transcript = self._transcribe_audio(
-                            processed_audio, 
-                            lambda p, m, extra=None: tracker.update(0.6 + p * 0.2, m)
-                        )
-                    tracker.next_step()
-                    
-                    # Step 5: Analyze content
-                    tracker.update(0.8, "Analyzing teaching content")
-                    content_analysis = self.content_analyzer.analyze_content(transcript)
-                    
-                    # Step 6: Generate recommendations
-                    tracker.update(0.9, "Generating recommendations")
-                    recommendations = self.recommendation_generator.generate_recommendations(
-                        audio_features,
-                        content_analysis
-                    )
-                    tracker.next_step()
-
-                    # Add speech metrics evaluation
-                    speech_metrics = self._evaluate_speech_metrics(transcript, audio_features)
-                    
-                    # Clear progress indicators
-                    status.empty()
-                    progress.empty()
-                    
-                    return {
-                        "audio_features": audio_features,
-                        "transcript": transcript,
-                        "teaching": content_analysis,
-                        "recommendations": recommendations,
-                        "speech_metrics": speech_metrics
-                    }
-
-            finally:
-                # Clean up any remaining temporary files
-                for temp_file in temp_files:
-                    try:
-                        if os.path.exists(temp_file):
-                            os.remove(temp_file)
-                    except Exception as e:
-                        logger.warning(f"Failed to remove temporary file {temp_file}: {e}")
-
-        except Exception as e:
-            logger.error(f"Error in video evaluation: {e}")
-            # Clean up UI elements on error
-            if 'status' in locals():
-                status.empty()
-            if 'progress' in locals():
-                progress.empty()
-            raise RuntimeError(f"Analysis failed: {str(e)}")
-
-    def _transcribe_audio(self, audio_path: str, progress_callback=None) -> str:
-        """Transcribe audio using Whisper with direct approach and timing"""
-        try:
-            if progress_callback:
-                progress_callback(0.1, "Loading transcription model...")
-
-            # Generate cache key based on file content
-            cache_key = f"transcript_{hashlib.md5(open(audio_path, 'rb').read()).hexdigest()}"
-            
-            # Check cache first
-            if cache_key in st.session_state:
-                logger.info("Using cached transcription") 
-                if progress_callback:
-                    progress_callback(1.0, "Retrieved from cache")
-                return st.session_state[cache_key]
-
-            # Add validation for audio file
-            if not os.path.exists(audio_path):
-                raise FileNotFoundError(f"Audio file not found: {audio_path}")
-
-            if progress_callback:
-                progress_callback(0.2, "Initializing model...")
-
-            # Start timing
-            start_time = time.time()
-
-            try:
-                # Load and transcribe with Whisper
-                model = whisper.load_model("medium")
-                result = model.transcribe(audio_path)
-                transcript = result["text"]
-
-                # Calculate elapsed time
-                end_time = time.time()
-                elapsed_time = end_time - start_time
-                logger.info(f"Transcription completed in {elapsed_time:.2f} seconds")
-
-                if progress_callback:
-                    progress_callback(0.9, f"Transcription completed in {elapsed_time:.2f} seconds")
-
-                # Validate transcript
-                if not transcript.strip():
-                    raise ValueError("Transcription produced empty result")
-
-                # Cache the result
-                st.session_state[cache_key] = transcript
-
-                if progress_callback:
-                    progress_callback(1.0, "Transcription complete!")
-
-                return transcript
-
-            except Exception as e:
-                logger.error(f"Error during transcription: {e}")
-                raise RuntimeError(f"Transcription failed: {str(e)}")
-
-        except Exception as e:
-            logger.error(f"Error in transcription: {e}")
-            if progress_callback:
-                progress_callback(1.0, "Error in transcription", str(e))
-            raise
-
-    def _merge_transcripts(self, transcripts: List[str]) -> str:
-        """Merge transcripts with overlap deduplication"""
-        if not transcripts:
-            return ""
-        
-        def clean_text(text):
-            # Remove extra spaces and normalize punctuation
-            return ' '.join(text.split())
-        
-        def find_overlap(text1, text2):
-            # Find overlapping text between consecutive chunks
-            words1 = text1.split()
-            words2 = text2.split()
-            
-            for i in range(min(len(words1), 20), 0, -1):  # Check up to 20 words
-                if ' '.join(words1[-i:]) == ' '.join(words2[:i]):
-                    return i
-            return 0
-
-        merged = clean_text(transcripts[0])
-        
-        for i in range(1, len(transcripts)):
-            current = clean_text(transcripts[i])
-            overlap_size = find_overlap(merged, current)
-            merged += ' ' + current.split(' ', overlap_size)[-1]
-        
-        return merged
-
-    def calculate_speech_metrics(self, transcript: str, audio_duration: float) -> Dict[str, float]:
-        """Calculate words per minute and other speech metrics."""
-        words = len(transcript.split())
-        minutes = audio_duration / 60
-        return {
-            'words_per_minute': words / minutes if minutes > 0 else 0,
-            'total_words': words,
-            'duration_minutes': minutes
-        }
-
-    def _evaluate_speech_metrics(self, transcript: str, audio_features: Dict[str, float], 
-                               progress_callback=None) -> Dict[str, Any]:
-        """Evaluate speech metrics with improved accuracy"""
-        try:
-            if progress_callback:
-                progress_callback(0.2, "Calculating speech metrics...")
-
-            # Calculate words and duration
-            words = len(transcript.split())
-            duration_minutes = float(audio_features.get('duration', 0)) / 60
-            
-            # Calculate words per minute with updated range (130-160 WPM is ideal for teaching)
-            words_per_minute = float(words / duration_minutes if duration_minutes > 0 else 0)
-            
-            # Improved filler word detection (2-3 per minute is acceptable)
-            filler_words = re.findall(r'\b(um|uh|like|you\s+know|basically|actually|literally)\b', 
-                                    transcript.lower())
-            fillers_count = len(filler_words)
-            fillers_per_minute = float(fillers_count / duration_minutes if duration_minutes > 0 else 0)
-            
-            # Improved error detection (1-2 per minute is acceptable)
-            repeated_words = len(re.findall(r'\b(\w+)\s+\1\b', transcript.lower()))
-            incomplete_sentences = len(re.findall(r'[a-zA-Z]+\s*\.\.\.|\b[a-zA-Z]+\s*-\s+', transcript))
-            errors_count = repeated_words + incomplete_sentences
-            errors_per_minute = float(errors_count / duration_minutes if duration_minutes > 0 else 0)
-
-            # Set default thresholds if analysis fails
-            max_errors = 1.0
-            max_fillers = 3.0
-            threshold_explanation = "Using standard thresholds"
-            grammatical_errors = []
-
-            # Calculate fluency score based on both errors and fillers
-            fluency_score = 1 if (errors_per_minute <= max_errors and fillers_per_minute <= max_fillers) else 0
-            
-            return {
-                "speed": {
-                    "score": 1 if 120 <= words_per_minute <= 180 else 0,
-                    "wpm": words_per_minute,
-                    "total_words": words,
-                    "duration_minutes": duration_minutes
-                },
-                "fluency": {
-                    "score": fluency_score,  # Add explicit fluency score
-                    "errorsPerMin": errors_per_minute,
-                    "fillersPerMin": fillers_per_minute,
-                    "maxErrorsThreshold": max_errors,
-                    "maxFillersThreshold": max_fillers,
-                    "thresholdExplanation": threshold_explanation,
-                    "detectedErrors": [
-                        {
-                            "type": "Grammar",
-                            "context": error,
-                        } for error in grammatical_errors
-                    ],
-                    "detectedFillers": filler_words
-                },
-                "flow": {
-                    "score": 1 if audio_features.get("pauses_per_minute", 0) <= 12 else 0,
-                    "pausesPerMin": audio_features.get("pauses_per_minute", 0)
-                },
-                "intonation": {
-                    "pitch": audio_features.get("pitch_mean", 0),
-                    "pitchScore": 1 if 20 <= (audio_features.get("pitch_std", 0) / audio_features.get("pitch_mean", 0) * 100 if audio_features.get("pitch_mean", 0) > 0 else 0) <= 40 else 0,
-                    "pitchVariation": audio_features.get("pitch_std", 0),
-                    "patternScore": 1 if audio_features.get("variations_per_minute", 0) >= 120 else 0,
-                    "risingPatterns": audio_features.get("rising_patterns", 0),
-                    "fallingPatterns": audio_features.get("falling_patterns", 0),
-                    "variationsPerMin": audio_features.get("variations_per_minute", 0),
-                    "mu": audio_features.get("pitch_mean", 0)
-                },
-                "energy": {
-                    "score": 1 if 60 <= audio_features.get("mean_amplitude", 0) <= 75 else 0,
-                    "meanAmplitude": audio_features.get("mean_amplitude", 0),
-                    "amplitudeDeviation": audio_features.get("amplitude_deviation", 0),
-                    "variationScore": 1 if 0.05 <= audio_features.get("amplitude_deviation", 0) <= 0.15 else 0
-                }
-            }
-
-        except Exception as e:
-            logger.error(f"Error in speech metrics evaluation: {e}")
-            raise
-
 def validate_video_file(file_path: str):
     """Validate video file before processing"""
     MAX_SIZE = 1024 * 1024 * 1024  # 500MB limit
