@@ -698,12 +698,12 @@ Important:
             
             try:
                 response = self.content_analyzer.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
+                    model="gpt-4o-mini",
+                    messages=[
                         {"role": "system", "content": "You are a speech analysis expert focusing on identifying speech patterns and errors."},
                         {"role": "user", "content": analysis_prompt}
-                ],
-                response_format={"type": "json_object"},
+                    ],
+                    response_format={"type": "json_object"},
                     temperature=0.3
                 )
                 
@@ -721,23 +721,23 @@ Important:
                 errors_per_minute = float(total_errors / duration_minutes if duration_minutes > 0 else 0)
                 
                 # Set thresholds
-            max_errors = 1.0
-            max_fillers = 3.0
-
+                max_errors = 1.0
+                max_fillers = 3.0
+                
                 # Calculate fluency score
-            fluency_score = 1 if (errors_per_minute <= max_errors and fillers_per_minute <= max_fillers) else 0
-            
-            return {
-                "speed": {
-                    "score": 1 if 120 <= words_per_minute <= 180 else 0,
-                    "wpm": words_per_minute,
-                    "total_words": words,
-                    "duration_minutes": duration_minutes
-                },
-                "fluency": {
+                fluency_score = 1 if (errors_per_minute <= max_errors and fillers_per_minute <= max_fillers) else 0
+                
+                return {
+                    "speed": {
+                        "score": 1 if 120 <= words_per_minute <= 180 else 0,
+                        "wpm": words_per_minute,
+                        "total_words": words,
+                        "duration_minutes": duration_minutes
+                    },
+                    "fluency": {
                         "score": fluency_score,
-                    "errorsPerMin": errors_per_minute,
-                    "fillersPerMin": fillers_per_minute,
+                        "errorsPerMin": errors_per_minute,
+                        "fillersPerMin": fillers_per_minute,
                         "maxErrorsThreshold": max_errors,
                         "maxFillersThreshold": max_fillers,
                         "detectedFillers": filler_words,
