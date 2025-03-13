@@ -2051,5 +2051,137 @@ def main():
     except Exception as e:
         st.error(f"Application error: {str(e)}")
 
+class MentorEvaluator:
+    """Coordinates the evaluation process for mentor demos"""
+    def __init__(self):
+        self.audio_extractor = AudioFeatureExtractor()
+        self.content_analyzer = ContentAnalyzer(st.secrets["OPENAI_API_KEY"])
+        
+    def evaluate_video(self, video_path: str, transcript_file: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Evaluate a teaching video and generate comprehensive analysis
+        
+        Args:
+            video_path: Path to the video file
+            transcript_file: Optional path to transcript file
+            
+        Returns:
+            Dictionary containing evaluation results
+        """
+        try:
+            # Create progress tracking
+            status_container = st.empty()
+            progress_bar = st.progress(0)
+            progress = ProgressTracker(status_container, progress_bar)
+            
+            # Step 1: Extract audio from video
+            progress.update(0.0, "Extracting audio from video...")
+            with temporary_file('.wav') as audio_path:
+                subprocess.run([
+                    'ffmpeg', '-i', video_path,
+                    '-vn', '-acodec', 'pcm_s16le',
+                    '-ar', '16000', '-ac', '1',
+                    audio_path
+                ], check=True, capture_output=True)
+                progress.next_step()
+            
+            # Step 2: Generate transcript if not provided
+            progress.update(0.0, "Processing audio...")
+            if transcript_file:
+                with open(transcript_file, 'r') as f:
+                    transcript = f.read()
+            else:
+                # Initialize Whisper model
+                model = WhisperModel("base", device="cpu", compute_type="int8")
+                segments, _ = model.transcribe(audio_path, beam_size=5)
+                transcript = " ".join([segment.text for segment in segments])
+            progress.next_step()
+            
+            # Step 3: Extract audio features
+            progress.update(0.0, "Analyzing audio features...")
+            audio_features = self.audio_extractor.extract_features(
+                audio_path,
+                progress_callback=lambda p, m: progress.update(p, "Analyzing audio features...", m)
+            )
+            progress.next_step()
+            
+            # Step 4: Analyze teaching content
+            progress.update(0.0, "Analyzing teaching content...")
+            teaching_analysis = self.content_analyzer.analyze_content(
+                transcript,
+                progress_callback=lambda p, m: progress.update(p, "Analyzing teaching content...", m)
+            )
+            progress.next_step()
+            
+            # Step 5: Generate final evaluation
+            progress.update(0.0, "Generating final evaluation...")
+            evaluation = {
+                "audio_features": audio_features,
+                "transcript": transcript,
+                "teaching": teaching_analysis,
+                "recommendations": self._generate_recommendations(audio_features, teaching_analysis)
+            }
+            progress.next_step()
+            
+            return evaluation
+            
+        except subprocess.SubprocessError as e:
+            logger.error(f"FFmpeg error: {e}")
+            raise AudioProcessingError("Failed to process video audio")
+        except Exception as e:
+            logger.error(f"Evaluation error: {e}")
+            raise
+            
+    def _generate_recommendations(self, audio_features: Dict[str, float], 
+                                teaching_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate recommendations based on analysis results"""
+        recommendations = {
+            "summary": "",
+            "improvements": []
+        }
+        
+        try:
+            # Generate summary and improvements using GPT-4
+            analysis_prompt = f"""
+            Based on the following teaching analysis and audio metrics, provide:
+            1. A brief summary of the teaching performance
+            2. Specific areas for improvement with actionable suggestions
+            
+            Audio Metrics:
+            {json.dumps(audio_features, indent=2)}
+            
+            Teaching Analysis:
+            {json.dumps(teaching_analysis, indent=2)}
+            
+            Format response as JSON:
+            {{
+                "summary": "brief overall assessment",
+                "improvements": [
+                    {{"category": "COMMUNICATION/TEACHING/TECHNICAL", "message": "specific suggestion"}}
+                ]
+            }}
+            """
+            
+            response = self.content_analyzer.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a teaching evaluation expert providing constructive feedback."},
+                    {"role": "user", "content": analysis_prompt}
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.3
+            )
+            
+            recommendations = json.loads(response.choices[0].message.content)
+            
+        except Exception as e:
+            logger.error(f"Error generating recommendations: {e}")
+            recommendations["summary"] = "Error generating detailed recommendations."
+            recommendations["improvements"] = [
+                {"category": "TECHNICAL", "message": "Unable to generate specific recommendations."}
+            ]
+        
+        return recommendations
+
 if __name__ == "__main__":
     main()
