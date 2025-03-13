@@ -56,9 +56,9 @@ class ProgressTracker:
         self.status = status_container
         self.progress = progress_bar
         self.current_step = 0
-        self.total_steps = 5  # Total number of main processing steps
-        self.substep_container = st.empty()  # Add container for substep details
-        self.metrics_container = st.container()  # Add container for metrics
+        self.total_steps = 6  # Update total steps to include speech metrics
+        self.substep_container = st.empty()
+        self.metrics_container = st.container()
         
     def update(self, progress: float, message: str, substep: str = "", metrics: Dict[str, Any] = None):
         """Update progress bar and status message with enhanced UI feedback
@@ -662,7 +662,7 @@ Important:
 
     def _evaluate_speech_metrics(self, transcript: str, audio_features: Dict[str, float], 
                            progress_callback=None) -> Dict[str, Any]:
-        """Evaluate speech metrics with improved accuracy and AI-powered error detection"""
+        """Evaluate speech metrics with improved accuracy"""
         try:
             if progress_callback:
                 progress_callback(0.2, "Calculating speech metrics...")
@@ -672,111 +672,62 @@ Important:
             duration_minutes = float(audio_features.get('duration', 0)) / 60
             words_per_minute = float(words / duration_minutes if duration_minutes > 0 else 0)
             
-            # Use OpenAI to analyze filler words and speech errors
-            analysis_prompt = f"""Analyze this teaching transcript for filler words and speech errors.
-            Identify:
-            1. Filler words (um, uh, like, you know, etc.)
-            2. Speech errors (stutters, repeated words, incomplete sentences)
-            3. Grammar errors
+            # Calculate fluency metrics
+            filler_words = ['um', 'uh', 'like', 'you know', 'sort of', 'kind of']
+            filler_count = sum(transcript.lower().count(filler) for filler in filler_words)
+            fillers_per_minute = float(filler_count / duration_minutes if duration_minutes > 0 else 0)
             
-            Format response as JSON:
-            {{
-                "filler_words": [
-                    {{"word": "word", "count": number, "timestamps": ["MM:SS"]}}
-                ],
-                "speech_errors": [
-                    {{"type": "error_type", "context": "error in context", "timestamps": ["MM:SS"]}}
-                ],
-                "grammar_errors": [
-                    {{"type": "error_type", "context": "error in context", "timestamps": ["MM:SS"]}}
-                ]
-            }}
-
-            Transcript:
-            {transcript}
-            """
+            # Detect speech errors (repetitions, incomplete sentences)
+            words_list = transcript.split()
+            repetitions = sum(1 for i in range(len(words_list)-1) if words_list[i] == words_list[i+1])
+            incomplete_sentences = len(re.findall(r'[.!?]\s*[a-z]|[^.!?]$', transcript))
+            total_errors = repetitions + incomplete_sentences
+            errors_per_minute = float(total_errors / duration_minutes if duration_minutes > 0 else 0)
             
-            try:
-                response = self.content_analyzer.client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": "You are a speech analysis expert focusing on identifying speech patterns and errors."},
-                        {"role": "user", "content": analysis_prompt}
-                    ],
-                    response_format={"type": "json_object"},
-                    temperature=0.3
-                )
-                
-                analysis = json.loads(response.choices[0].message.content)
-                
-                # Calculate metrics from AI analysis
-                filler_words = analysis.get("filler_words", [])
-                speech_errors = analysis.get("speech_errors", [])
-                grammar_errors = analysis.get("grammar_errors", [])
-                
-                total_fillers = sum(fw["count"] for fw in filler_words)
-                fillers_per_minute = float(total_fillers / duration_minutes if duration_minutes > 0 else 0)
-                
-                total_errors = len(speech_errors) + len(grammar_errors)
-                errors_per_minute = float(total_errors / duration_minutes if duration_minutes > 0 else 0)
-                
-                # Set thresholds
-                max_errors = 1.0
-                max_fillers = 3.0
-                
-                # Calculate fluency score
-                fluency_score = 1 if (errors_per_minute <= max_errors and fillers_per_minute <= max_fillers) else 0
-                
-                return {
-                    "speed": {
-                        "score": 1 if 120 <= words_per_minute <= 180 else 0,
-                        "wpm": words_per_minute,
-                        "total_words": words,
-                        "duration_minutes": duration_minutes
-                    },
-                    "fluency": {
-                        "score": fluency_score,
-                        "errorsPerMin": errors_per_minute,
-                        "fillersPerMin": fillers_per_minute,
-                        "maxErrorsThreshold": max_errors,
-                        "maxFillersThreshold": max_fillers,
-                        "detectedFillers": filler_words,
-                        "detectedSpeechErrors": speech_errors,
-                        "detectedGrammarErrors": grammar_errors
-                    },
-                    "flow": {
-                        "score": 1 if audio_features.get("pauses_per_minute", 0) <= 12 else 0,
-                        "pausesPerMin": audio_features.get("pauses_per_minute", 0)
-                    },
-                    "intonation": {
-                        "pitch": audio_features.get("pitch_mean", 0),
-                        "pitchScore": 1 if 20 <= (audio_features.get("pitch_std", 0) / audio_features.get("pitch_mean", 0) * 100 if audio_features.get("pitch_mean", 0) > 0 else 0) <= 40 else 0,
-                        "pitchVariation": audio_features.get("pitch_std", 0),
-                        "patternScore": 1 if audio_features.get("variations_per_minute", 0) >= 120 else 0,
-                        "risingPatterns": audio_features.get("rising_patterns", 0),
-                        "fallingPatterns": audio_features.get("falling_patterns", 0),
-                        "variationsPerMin": audio_features.get("variations_per_minute", 0)
-                    },
-                    "energy": {
-                        "score": 1 if 60 <= audio_features.get("mean_amplitude", 0) <= 75 else 0,
-                        "meanAmplitude": audio_features.get("mean_amplitude", 0),
-                        "amplitudeDeviation": audio_features.get("amplitude_deviation", 0),
-                        "variationScore": 1 if 0.05 <= audio_features.get("amplitude_deviation", 0) <= 0.15 else 0
+            # Basic speech metrics calculation
+            return {
+                "speed": {
+                    "score": 1 if 120 <= words_per_minute <= 180 else 0,
+                    "wpm": words_per_minute,
+                    "total_words": words,
+                    "duration_minutes": duration_minutes
+                },
+                "fluency": {
+                    "score": 1 if fillers_per_minute <= 3 and errors_per_minute <= 1 else 0,
+                    "errorsPerMin": errors_per_minute,
+                    "fillersPerMin": fillers_per_minute,
+                    "maxErrorsThreshold": 1.0,
+                    "maxFillersThreshold": 3.0,
+                    "details": {
+                        "filler_count": filler_count,
+                        "repetitions": repetitions,
+                        "incomplete_sentences": incomplete_sentences
                     }
+                },
+                "flow": {
+                    "score": 1 if audio_features.get("pauses_per_minute", 0) <= 12 else 0,
+                    "pausesPerMin": audio_features.get("pauses_per_minute", 0)
+                },
+                "intonation": {
+                    "pitch": audio_features.get("pitch_mean", 0),
+                    "pitchScore": 1 if 20 <= (audio_features.get("pitch_std", 0) / audio_features.get("pitch_mean", 0) * 100 if audio_features.get("pitch_mean", 0) > 0 else 0) <= 40 else 0,
+                    "pitchVariation": audio_features.get("pitch_std", 0),
+                    "patternScore": 1 if audio_features.get("variations_per_minute", 0) >= 120 else 0,
+                    "risingPatterns": audio_features.get("rising_patterns", 0),
+                    "fallingPatterns": audio_features.get("falling_patterns", 0),
+                    "variationsPerMin": audio_features.get("variations_per_minute", 0)
+                },
+                "energy": {
+                    "score": 1 if 60 <= audio_features.get("mean_amplitude", 0) <= 75 else 0,
+                    "meanAmplitude": audio_features.get("mean_amplitude", 0),
+                    "amplitudeDeviation": audio_features.get("amplitude_deviation", 0),
+                    "variationScore": 1 if 0.05 <= audio_features.get("amplitude_deviation", 0) <= 0.15 else 0
                 }
-                
-            except Exception as api_error:
-                logger.error(f"Error in AI analysis: {api_error}")
-                # Fall back to basic analysis if AI fails
-                return self._basic_speech_metrics(transcript, audio_features)
-
+            }
+            
         except Exception as e:
             logger.error(f"Error in speech metrics evaluation: {e}")
             raise
-
-    def _basic_speech_metrics(self, transcript: str, audio_features: Dict[str, float]) -> Dict[str, Any]:
-        """Fallback method for basic speech metrics when AI analysis fails"""
-        # ... (keep the original regex-based analysis as fallback) ...
 
     def generate_suggestions(self, category: str, citations: List[str]) -> List[str]:
         """Generate contextual suggestions based on category and citations"""
@@ -1075,114 +1026,72 @@ def display_evaluation(evaluation: Dict[str, Any]):
             if "summary" in recommendations:
                 st.markdown("""
                     <div class="summary-card">
-                        <h4>📊 Overall Summary</h4>
+                        <h4>📊 Overall Assessment</h4>
                         <div class="summary-content">
-                """, unsafe_allow_html=True)
-                st.markdown(recommendations["summary"])
-                st.markdown("</div></div>", unsafe_allow_html=True)
+                            {}
+                        </div>
+                    </div>
+                """.format(recommendations["summary"]), unsafe_allow_html=True)
             
-            # Display improvements using categories from content analysis
+            # Display improvements in categorized columns
             st.markdown("<h4>💡 Areas for Improvement</h4>", unsafe_allow_html=True)
             improvements = recommendations.get("improvements", [])
             
-            if isinstance(improvements, list):
-                # Use predefined categories
-                categories = {
-                    "🗣️ Communication": [],
-                    "📚 Teaching": [],
-                    "💻 Technical": []
-                }
-                
-                # Each improvement should now come with a category from the content analysis
-                for improvement in improvements:
-                    if isinstance(improvement, dict):
-                        category = improvement.get("category", "💻 Technical")  # Default to Technical if no category
-                        message = improvement.get("message", str(improvement))
-                        if "COMMUNICATION" in category.upper():
-                            categories["🗣️ Communication"].append(message)
-                        elif "TEACHING" in category.upper():
-                            categories["📚 Teaching"].append(message)
-                        elif "TECHNICAL" in category.upper():
-                            categories["💻 Technical"].append(message)
-                    else:
-                        # Handle legacy format or plain strings
-                        categories["💻 Technical"].append(improvement)
-                
-                # Display categorized improvements in columns
-                cols = st.columns(len(categories))
-                for col, (category, items) in zip(cols, categories.items()):
-                    with col:
-                        st.markdown(f"""
-                            <div class="improvement-card">
-                                <h5>{category}</h5>
-                                <div class="improvement-list">
+            # Initialize category buckets
+            categorized_improvements = {
+                "Communication": [],
+                "Teaching": [],
+                "Technical": []
+            }
+            
+            # Sort improvements into categories
+            for improvement in improvements:
+                if isinstance(improvement, dict):
+                    category = improvement.get("category", "").upper()
+                    message = improvement.get("message", "")
+                    
+                    if "COMMUNICATION" in category:
+                        categorized_improvements["Communication"].append(message)
+                    elif "TEACHING" in category:
+                        categorized_improvements["Teaching"].append(message)
+                    elif "TECHNICAL" in category:
+                        categorized_improvements["Technical"].append(message)
+                else:
+                    # Handle string improvements (legacy format)
+                    categorized_improvements["Technical"].append(str(improvement))
+            
+            # Create columns for each category
+            cols = st.columns(3)
+            
+            # Display improvements in columns with icons
+            for col, (category, items) in zip(cols, categorized_improvements.items()):
+                with col:
+                    icon = "🗣️" if category == "Communication" else "📚" if category == "Teaching" else "💻"
+                    st.markdown(f"""
+                        <div class="improvement-card">
+                            <h5>{icon} {category}</h5>
+                            <div class="improvement-list">
                         """, unsafe_allow_html=True)
-                        
+                    
+                    if items:
                         for item in items:
                             st.markdown(f"""
                                 <div class="improvement-item">
                                     • {item}
                                 </div>
                             """, unsafe_allow_html=True)
-                        
-                        st.markdown("</div></div>", unsafe_allow_html=True)
+                    else:
+                        st.markdown("""
+                            <div class="improvement-item no-improvements">
+                                No specific improvements needed in this category.
+                            </div>
+                        """, unsafe_allow_html=True)
+                    
+                    st.markdown("</div></div>", unsafe_allow_html=True)
             
-            # Add additional CSS for new components
+            # Add additional CSS for recommendations styling
             st.markdown("""
                 <style>
-                .teaching-card {
-                    background: white;
-                    border-radius: 8px;
-                    padding: 20px;
-                    margin: 10px 0;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }
-                
-                .teaching-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    margin-bottom: 15px;
-                }
-                
-                .category-name {
-                    font-size: 1.2em;
-                    font-weight: bold;
-                    color: #1f77b4;
-                }
-                
-                .score-badge {
-                    padding: 5px 15px;
-                    border-radius: 15px;
-                    font-weight: bold;
-                }
-                
-                .score-pass {
-                    background-color: #28a745;
-                    color: white;
-                }
-                
-                .score-fail {
-                    background-color: #dc3545;
-                    color: white;
-                }
-                
-                .citations-container {
-                    margin-top: 10px;
-                }
-                
-                .citation-box {
-                    background: #f8f9fa;
-                    border-left: 3px solid #6c757d;
-                    padding: 10px;
-                    margin: 5px 0;
-                    border-radius: 0 4px 4px 0;
-                }
-                
-                .citation-text {
-                    color: #495057;
-                }
-                
                 .summary-card {
                     background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
                     border-radius: 8px;
@@ -1192,6 +1101,16 @@ def display_evaluation(evaluation: Dict[str, Any]):
                     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                 }
                 
+                .summary-card h4 {
+                    color: #1f77b4;
+                    margin-bottom: 15px;
+                }
+                
+                .summary-content {
+                    color: #495057;
+                    line-height: 1.6;
+                }
+                
                 .improvement-card {
                     background: white;
                     border-radius: 8px;
@@ -1199,13 +1118,14 @@ def display_evaluation(evaluation: Dict[str, Any]):
                     margin: 10px 0;
                     height: 100%;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    border-left: 4px solid #28a745;
                 }
                 
                 .improvement-card h5 {
                     color: #1f77b4;
-                    margin-bottom: 10px;
+                    margin-bottom: 15px;
+                    padding-bottom: 10px;
                     border-bottom: 2px solid #f0f0f0;
-                    padding-bottom: 5px;
                 }
                 
                 .improvement-list {
@@ -1213,12 +1133,22 @@ def display_evaluation(evaluation: Dict[str, Any]):
                 }
                 
                 .improvement-item {
-                    padding: 5px 0;
-                    border-bottom: 1px solid #f0f0f0;
+                    padding: 8px;
+                    margin: 5px 0;
+                    background: #f8f9fa;
+                    border-radius: 4px;
+                    color: #495057;
+                    transition: transform 0.2s ease;
                 }
                 
-                .improvement-item:last-child {
-                    border-bottom: none;
+                .improvement-item:hover {
+                    transform: translateX(5px);
+                    background: #f0f0f0;
+                }
+                
+                .no-improvements {
+                    color: #6c757d;
+                    font-style: italic;
                 }
                 </style>
             """, unsafe_allow_html=True)
@@ -2004,9 +1934,15 @@ def main():
                         """, unsafe_allow_html=True)
                         
                         evaluator = MentorEvaluator()
+                        
+                        # Read transcript content if provided
+                        transcript_content = None
+                        if uploaded_transcript:
+                            transcript_content = uploaded_transcript.getvalue().decode('utf-8')
+                        
                         st.session_state.evaluation_results = evaluator.evaluate_video(
                             video_path,
-                            uploaded_transcript if input_type == "Video + Manual Transcript" else None
+                            transcript_content  # Pass the transcript content instead of the file object
                         )
                         st.session_state.processing_complete = True
                         
@@ -2057,16 +1993,9 @@ class MentorEvaluator:
         self.audio_extractor = AudioFeatureExtractor()
         self.content_analyzer = ContentAnalyzer(st.secrets["OPENAI_API_KEY"])
         
-    def evaluate_video(self, video_path: str, transcript_file: Optional[str] = None) -> Dict[str, Any]:
+    def evaluate_video(self, video_path: str, transcript_content: Optional[str] = None) -> Dict[str, Any]:
         """
         Evaluate a teaching video and generate comprehensive analysis
-        
-        Args:
-            video_path: Path to the video file
-            transcript_file: Optional path to transcript file
-            
-        Returns:
-            Dictionary containing evaluation results
         """
         try:
             # Create progress tracking
@@ -2074,64 +2003,82 @@ class MentorEvaluator:
             progress_bar = st.progress(0)
             progress = ProgressTracker(status_container, progress_bar)
             
-            # Step 1: Extract audio from video
-            progress.update(0.0, "Extracting audio from video...")
-            with temporary_file('.wav') as audio_path:
-                subprocess.run([
-                    'ffmpeg', '-i', video_path,
-                    '-vn', '-acodec', 'pcm_s16le',
-                    '-ar', '16000', '-ac', '1',
-                    audio_path
-                ], check=True, capture_output=True)
+            # Create a temporary directory that will persist throughout the function
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Step 1: Extract audio from video
+                progress.update(0.0, "Extracting audio from video...")
+                audio_path = os.path.join(temp_dir, 'audio.wav')
+                
+                try:
+                    subprocess.run([
+                        'ffmpeg', '-i', video_path,
+                        '-vn', '-acodec', 'pcm_s16le',
+                        '-ar', '16000', '-ac', '1',
+                        audio_path
+                    ], check=True, capture_output=True)
+                except subprocess.SubprocessError as e:
+                    logger.error(f"FFmpeg error: {e}")
+                    raise AudioProcessingError(f"Failed to process video audio: {str(e)}")
+                
                 progress.next_step()
-            
-            # Step 2: Generate transcript if not provided
-            progress.update(0.0, "Processing audio...")
-            if transcript_file:
-                with open(transcript_file, 'r') as f:
-                    transcript = f.read()
-            else:
-                # Initialize Whisper model
-                model = WhisperModel("base", device="cpu", compute_type="int8")
-                segments, _ = model.transcribe(audio_path, beam_size=5)
-                transcript = " ".join([segment.text for segment in segments])
-            progress.next_step()
-            
-            # Step 3: Extract audio features
-            progress.update(0.0, "Analyzing audio features...")
-            audio_features = self.audio_extractor.extract_features(
-                audio_path,
-                progress_callback=lambda p, m: progress.update(p, "Analyzing audio features...", m)
-            )
-            progress.next_step()
-            
-            # Step 4: Analyze teaching content
-            progress.update(0.0, "Analyzing teaching content...")
-            teaching_analysis = self.content_analyzer.analyze_content(
-                transcript,
-                progress_callback=lambda p, m: progress.update(p, "Analyzing teaching content...", m)
-            )
-            progress.next_step()
-            
-            # Step 5: Generate final evaluation
-            progress.update(0.0, "Generating final evaluation...")
-            evaluation = {
-                "audio_features": audio_features,
-                "transcript": transcript,
-                "teaching": teaching_analysis,
-                "recommendations": self._generate_recommendations(audio_features, teaching_analysis)
-            }
-            progress.next_step()
-            
-            return evaluation
-            
-        except subprocess.SubprocessError as e:
-            logger.error(f"FFmpeg error: {e}")
-            raise AudioProcessingError("Failed to process video audio")
+                
+                # Step 2: Generate transcript if not provided
+                progress.update(0.0, "Processing audio...")
+                if transcript_content:
+                    transcript = transcript_content
+                else:
+                    # Initialize Whisper model
+                    model = WhisperModel("base", device="cpu", compute_type="int8")
+                    segments, _ = model.transcribe(audio_path, beam_size=5)
+                    transcript = " ".join([segment.text for segment in segments])
+                progress.next_step()
+                
+                # Step 3: Extract audio features
+                progress.update(0.0, "Analyzing audio features...")
+                # Verify file exists before processing
+                if not os.path.exists(audio_path):
+                    raise AudioProcessingError(f"Audio file not found at {audio_path}")
+                    
+                audio_features = self.audio_extractor.extract_features(
+                    audio_path,
+                    progress_callback=lambda p, m: progress.update(p, "Analyzing audio features...", m)
+                )
+                progress.next_step()
+                
+                # Step 4: Calculate speech metrics (Add this step)
+                progress.update(0.0, "Analyzing speech patterns...")
+                speech_metrics = self._evaluate_speech_metrics(
+                    transcript,
+                    audio_features,
+                    progress_callback=lambda p, m: progress.update(p, "Analyzing speech patterns...", m)
+                )
+                progress.next_step()
+                
+                # Step 5: Analyze teaching content
+                progress.update(0.0, "Analyzing teaching content...")
+                teaching_analysis = self.content_analyzer.analyze_content(
+                    transcript,
+                    progress_callback=lambda p, m: progress.update(p, "Analyzing teaching content...", m)
+                )
+                progress.next_step()
+                
+                # Step 6: Generate final evaluation
+                progress.update(0.0, "Generating final evaluation...")
+                evaluation = {
+                    "audio_features": audio_features,
+                    "speech_metrics": speech_metrics,  # Include speech metrics in the evaluation
+                    "transcript": transcript,
+                    "teaching": teaching_analysis,
+                    "recommendations": self._generate_recommendations(audio_features, teaching_analysis)
+                }
+                progress.next_step()
+                
+                return evaluation
+                
         except Exception as e:
-            logger.error(f"Evaluation error: {e}")
+            logger.error(f"Evaluation error: {str(e)}")
             raise
-            
+
     def _generate_recommendations(self, audio_features: Dict[str, float], 
                                 teaching_analysis: Dict[str, Any]) -> Dict[str, Any]:
         """Generate recommendations based on analysis results"""
@@ -2182,6 +2129,75 @@ class MentorEvaluator:
             ]
         
         return recommendations
+
+    def _evaluate_speech_metrics(self, transcript: str, audio_features: Dict[str, float], 
+                           progress_callback=None) -> Dict[str, Any]:
+        """Evaluate speech metrics with improved accuracy"""
+        try:
+            if progress_callback:
+                progress_callback(0.2, "Calculating speech metrics...")
+
+            # Calculate words and duration
+            words = len(transcript.split())
+            duration_minutes = float(audio_features.get('duration', 0)) / 60
+            words_per_minute = float(words / duration_minutes if duration_minutes > 0 else 0)
+            
+            # Calculate fluency metrics
+            filler_words = ['um', 'uh', 'like', 'you know', 'sort of', 'kind of']
+            filler_count = sum(transcript.lower().count(filler) for filler in filler_words)
+            fillers_per_minute = float(filler_count / duration_minutes if duration_minutes > 0 else 0)
+            
+            # Detect speech errors (repetitions, incomplete sentences)
+            words_list = transcript.split()
+            repetitions = sum(1 for i in range(len(words_list)-1) if words_list[i] == words_list[i+1])
+            incomplete_sentences = len(re.findall(r'[.!?]\s*[a-z]|[^.!?]$', transcript))
+            total_errors = repetitions + incomplete_sentences
+            errors_per_minute = float(total_errors / duration_minutes if duration_minutes > 0 else 0)
+            
+            # Basic speech metrics calculation
+            return {
+                "speed": {
+                    "score": 1 if 120 <= words_per_minute <= 180 else 0,
+                    "wpm": words_per_minute,
+                    "total_words": words,
+                    "duration_minutes": duration_minutes
+                },
+                "fluency": {
+                    "score": 1 if fillers_per_minute <= 3 and errors_per_minute <= 1 else 0,
+                    "errorsPerMin": errors_per_minute,
+                    "fillersPerMin": fillers_per_minute,
+                    "maxErrorsThreshold": 1.0,
+                    "maxFillersThreshold": 3.0,
+                    "details": {
+                        "filler_count": filler_count,
+                        "repetitions": repetitions,
+                        "incomplete_sentences": incomplete_sentences
+                    }
+                },
+                "flow": {
+                    "score": 1 if audio_features.get("pauses_per_minute", 0) <= 12 else 0,
+                    "pausesPerMin": audio_features.get("pauses_per_minute", 0)
+                },
+                "intonation": {
+                    "pitch": audio_features.get("pitch_mean", 0),
+                    "pitchScore": 1 if 20 <= (audio_features.get("pitch_std", 0) / audio_features.get("pitch_mean", 0) * 100 if audio_features.get("pitch_mean", 0) > 0 else 0) <= 40 else 0,
+                    "pitchVariation": audio_features.get("pitch_std", 0),
+                    "patternScore": 1 if audio_features.get("variations_per_minute", 0) >= 120 else 0,
+                    "risingPatterns": audio_features.get("rising_patterns", 0),
+                    "fallingPatterns": audio_features.get("falling_patterns", 0),
+                    "variationsPerMin": audio_features.get("variations_per_minute", 0)
+                },
+                "energy": {
+                    "score": 1 if 60 <= audio_features.get("mean_amplitude", 0) <= 75 else 0,
+                    "meanAmplitude": audio_features.get("mean_amplitude", 0),
+                    "amplitudeDeviation": audio_features.get("amplitude_deviation", 0),
+                    "variationScore": 1 if 0.05 <= audio_features.get("amplitude_deviation", 0) <= 0.15 else 0
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in speech metrics evaluation: {e}")
+            raise
 
 if __name__ == "__main__":
     main()
