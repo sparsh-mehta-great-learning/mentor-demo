@@ -796,6 +796,12 @@ Important:
                     Format as a JSON array with a single string."""}
                 ],
                 response_format={"type": "json_object"},
+                temperature=0.3
+            )
+            
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            logger.error(f"Error generating suggestions: {e}")
 def validate_video_file(file_path: str):
     """Validate video file before processing"""
     MAX_SIZE = 1024 * 1024 * 1024  # 500MB limit
