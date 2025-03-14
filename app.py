@@ -2027,8 +2027,12 @@ class MentorEvaluator:
                 if transcript_content:
                     transcript = transcript_content
                 else:
-                    # Initialize Whisper model
-                    model = WhisperModel("base", device="cpu", compute_type="int8")
+                    # Automatically detect best available device
+                    device = "cuda" if torch.cuda.is_available() else "cpu"
+                    compute_type = "float16" if device == "cuda" else "int8"
+                    
+                    # Initialize Whisper model with detected device
+                    model = WhisperModel("base", device=device, compute_type=compute_type)
                     segments, _ = model.transcribe(audio_path, beam_size=5)
                     transcript = " ".join([segment.text for segment in segments])
                 progress.next_step()
