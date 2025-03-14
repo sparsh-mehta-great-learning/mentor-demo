@@ -16,3 +16,4 @@ soundfile
 reportlab
 pandas
 plotly-express
+pyautogui
