@@ -534,7 +534,11 @@ Required JSON response format:
         }},
         "Engagement and Interaction": {{
             "Score": 0 or 1,
-            "Citations": ["[MM:SS] Exact quote showing evidence"]
+            "Citations": ["[MM:SS] Exact quote showing evidence"],
+            "QuestionConfidence": {{
+                "Score": 0 or 1,
+                "Citations": ["[MM:SS] Exact quote showing evidence of question handling"]
+            }}
         }},
         "Professional Tone": {{
             "Score": 0 or 1,
@@ -601,13 +605,27 @@ Cohesive Storytelling:
 
 Engagement and Interaction:
 ✓ Score 1 if MOST:
+- Shows good audience interaction
 - Encourages participation
-- Shows audience awareness
-- Uses engaging techniques
+- Answers questions confidently and accurately
+- Maintains engagement throughout
 ✗ Score 0 if MULTIPLE:
-- Shows minimal interaction
+- Limited interaction
 - Ignores audience
-- Lacks engagement attempts
+- Shows uncertainty in answers
+- Fails to maintain engagement
+
+Question Confidence Scoring:
+✓ Score 1 if MOST:
+- Provides clear, direct answers
+- Shows deep understanding
+- Handles follow-ups well
+- Maintains composure
+✗ Score 0 if MULTIPLE:
+- Shows uncertainty
+- Provides unclear answers
+- Struggles with follow-ups
+- Shows nervousness
 
 Professional Tone:
 ✓ Score 1 if MOST:
@@ -915,6 +933,7 @@ Analyze the teaching style and provide:
 3. Specific improvements needed (each must be categorized as COMMUNICATION, TEACHING, or TECHNICAL)
 4. Profile matching for different learner types (choose ONLY ONE best match)
 5. Overall teaching rigor assessment
+6. Question handling assessment (confidence, accuracy, and improvement areas)
 
 Required JSON structure:
 {{
@@ -934,6 +953,11 @@ Required JSON structure:
             "message": "Specific improvement recommendation"
         }}
     ],
+    "questionHandling": {{
+        "confidence": "Assessment of confidence in answering questions",
+        "accuracy": "Assessment of answer accuracy",
+        "improvements": ["List of specific improvements for question handling"]
+    }},
     "rigor": "Assessment of teaching rigor",
     "profileMatches": [
         {{
@@ -964,7 +988,7 @@ Consider:
 - Balance of technical vs business context
 - Depth of code explanations
 - Use of examples and analogies
-- Engagement style
+- Engagement style and question handling confidence
 - Communication metrics
 - Teaching assessment scores"""
 
