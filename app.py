@@ -504,8 +504,8 @@ Do not create new timestamps."""
 
         prompt_template = """Analyze this teaching content with balanced standards. Each criterion should be evaluated fairly, avoiding both excessive strictness and leniency.
 
-Score 1 if MOST key requirements are met with clear evidence. Score 0 if MULTIPLE significant requirements are not met.
-You MUST provide specific citations with timestamps [MM:SS] for each assessment point.
+Score 1 if MOST key requirements are met with clear evidence. Score 0 if ANY major teaching deficiency is present.
+You MUST provide specific timestamps [MM:SS] for each assessment point.
 
 Transcript:
 {transcript}
@@ -514,52 +514,99 @@ Timestamp Instructions:
 {timestamp_instruction}
 
 Required JSON response format:
-{{
-    "Concept Assessment": {{
-        "Subject Matter Accuracy": {{
+{
+    "Concept Assessment": {
+        "Subject Matter Accuracy": {
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"]
-        }},
-        "First Principles Approach": {{
+        },
+        "First Principles Approach": {
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"]
-        }},
-        "Examples and Business Context": {{
+        },
+        "Examples and Business Context": {
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"]
-        }},
-        "Cohesive Storytelling": {{
+        },
+        "Cohesive Storytelling": {
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"]
-        }},
-        "Engagement and Interaction": {{
+        },
+        "Engagement and Interaction": {
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"],
-            "QuestionConfidence": {{
+            "QuestionHandling": {
                 "Score": 0 or 1,
-                "Citations": ["[MM:SS] Exact quote showing evidence of question handling"]
-            }}
-        }},
-        "Professional Tone": {{
+                "Citations": ["[MM:SS] Exact quote showing evidence"],
+                "Confidence": {
+                    "Score": 0 or 1,
+                    "Level": "HIGH/MEDIUM/LOW",
+                    "Examples": [
+                        {
+                            "Timestamp": "[MM:SS]",
+                            "Question": "Question asked",
+                            "Response": "Response given",
+                            "ConfidenceIndicators": ["List of confidence/uncertainty indicators"]
+                        }
+                    ]
+                },
+                "Accuracy": {
+                    "Score": 0 or 1,
+                    "CorrectAnswers": ["[MM:SS] Example of correct answer"],
+                    "Uncertainties": ["[MM:SS] Example of uncertain/incorrect response"]
+                }
+            }
+        },
+        "Professional Tone": {
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"]
-        }}
-    }},
-    "Code Assessment": {{
-        "Depth of Explanation": {{
+        }
+    },
+    "Code Assessment": {
+        "Depth of Explanation": {
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"]
-        }},
-        "Output Interpretation": {{
+        },
+        "Output Interpretation": {
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"]
-        }},
-        "Breaking down Complexity": {{
+        },
+        "Breaking down Complexity": {
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"]
-        }}
-    }}
-}}
+        }
+    }
+}
+
+Question Handling Assessment Criteria:
+
+Confidence Scoring (STRICT):
+✓ Score 1 ONLY if ALL:
+- Responds without hesitation
+- Uses authoritative tone
+- Provides complete answers
+- Maintains consistent voice level
+- Shows no verbal uncertainty markers
+✗ Score 0 if ANY:
+- Shows hesitation or uncertainty
+- Uses hedging language ("I think", "maybe", "probably")
+- Provides incomplete or vague answers
+- Voice wavers or trails off
+- Uses filler words during responses
+
+Accuracy Scoring (STRICT):
+✓ Score 1 ONLY if ALL:
+- Provides technically correct information
+- Answers align with industry standards
+- Gives complete explanations
+- Can handle follow-up questions
+- Admits knowledge gaps professionally
+✗ Score 0 if ANY:
+- Gives incorrect information
+- Provides misleading explanations
+- Cannot elaborate when asked
+- Avoids answering directly
+- Masks uncertainty with vagueness
 
 Balanced Scoring Criteria:
 
@@ -954,6 +1001,28 @@ Required JSON structure:
         }}
     ],
     "questionHandling": {{
+        "confidence": {{
+            "assessment": "Detailed assessment of confidence level",
+            "score": "HIGH/MEDIUM/LOW",
+            "strengths": ["List of confidence strengths"],
+            "weaknesses": ["List of confidence issues"],
+            "examples": [
+                {{
+                    "timestamp": "[MM:SS]",
+                    "context": "Description of interaction",
+                    "analysis": "Analysis of confidence indicators"
+                }}
+            ]
+        }},
+        "accuracy": {{
+            "assessment": "Detailed assessment of answer accuracy",
+            "score": "HIGH/MEDIUM/LOW",
+            "correctExamples": ["List of well-handled questions"],
+            "improvementAreas": ["List of questions that could be handled better"]
+        }},
+        "improvements": [
+            {{
+                "category": "CONFIDENCE/ACCURACY/PREPARATION",
         "confidence": "Assessment of confidence in answering questions",
         "accuracy": "Assessment of answer accuracy",
         "improvements": ["List of specific improvements for question handling"]
