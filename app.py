@@ -1736,105 +1736,23 @@ def display_evaluation(evaluation: Dict[str, Any]):
         with tabs[1]:
             st.header("Teaching Analysis")
             
+            # Get teaching data and handle potential None/missing data
             teaching_data = evaluation.get("teaching", {})
+            if not teaching_data:
+                st.warning("No teaching analysis data available")
+                return
             
             # Display Concept Assessment
             st.subheader("📚 Concept Assessment")
             concept_data = teaching_data.get("Concept Assessment", {})
             
-            for category, details in concept_data.items():
-                score = details.get("Score", 0)
-                citations = details.get("Citations", [])
-                
-                st.markdown(f"""
-                    <div class="teaching-card">
-                        <div class="teaching-header">
-                            <span class="category-name">{category}</span>
-                            <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
-                                {'✅ Pass' if score == 1 else '❌ Needs Work'}
-                            </span>
-                        </div>
-                        <div class="citations-container">
-                """, unsafe_allow_html=True)
-                
-                # Display citations
-                for citation in citations:
-                    st.markdown(f"""
-                        <div class="citation-box">
-                            <i class="citation-text">{citation}</i>
-                        </div>
-                    """, unsafe_allow_html=True)
-                
-                st.markdown("</div></div>", unsafe_allow_html=True)
-                st.markdown("---")
-            
-            # Display Code Assessment
-            st.subheader("💻 Code Assessment")
-            code_data = teaching_data.get("Code Assessment", {})
-            
-            for category, details in code_data.items():
-                score = details.get("Score", 0)
-                citations = details.get("Citations", [])
-                
-                st.markdown(f"""
-                    <div class="teaching-card">
-                        <div class="teaching-header">
-                            <span class="category-name">{category}</span>
-                            <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
-                                {'✅ Pass' if score == 1 else '❌ Needs Work'}
-                            </span>
-                        </div>
-                        <div class="citations-container">
-                """, unsafe_allow_html=True)
-                
-                for citation in citations:
-                    st.markdown(f"""
-                        <div class="citation-box">
-                            <i class="citation-text">{citation}</i>
-                        </div>
-                    """, unsafe_allow_html=True)
-                
-                st.markdown("</div></div>", unsafe_allow_html=True)
-                st.markdown("---")
-
-        with tabs[2]:
-            st.header("Recommendations")
-            recommendations = evaluation.get("recommendations", {})
-            
-            # Display summary in a styled card
-            if "summary" in recommendations:
-                st.markdown("""
-                    <div class="summary-card">
-                        <h4>📊 Overall Summary</h4>
-                        <div class="summary-content">
-                """, unsafe_allow_html=True)
-                st.markdown(recommendations["summary"])
-                st.markdown("</div></div>", unsafe_allow_html=True)
-            
-            # Display improvements using categories from content analysis
-            st.markdown("<h4>💡 Areas for Improvement</h4>", unsafe_allow_html=True)
-            improvements = recommendations.get("improvements", [])
-            
-            if isinstance(improvements, list):
-                # Use predefined categories
-                categories = {
-                    "🗣️ Communication": [],
-                    "📚 Teaching": [],
-                    "💻 Technical": []
-                }
-                
-                # Each improvement should now come with a category from the content analysis
-                for improvement in improvements:
-                    if isinstance(improvement, dict):
-                        category = improvement.get("category", "💻 Technical")  # Default to Technical if no category
-                        message = improvement.get("message", str(improvement))
-                        if "COMMUNICATION" in category.upper():
-                            categories["🗣️ Communication"].append(message)
-                        elif "TEACHING" in category.upper():
-                            categories["📚 Teaching"].append(message)
-                        elif "TECHNICAL" in category.upper():
-                            categories["💻 Technical"].append(message)
-                    else:
+            if not concept_data:
+                st.info("No concept assessment data available")
+            else:
+                for category, details in concept_data.items():
+                    # Ensure details is a dictionary and has required fields
+                    if not isinstance(details, dict):
+                        continue
                         # Handle legacy format or plain strings
                         categories["💻 Technical"].append(improvement)
                 
