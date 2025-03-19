@@ -362,41 +362,52 @@ class ContentAnalyzer:
             if not transcript or not transcript.strip():
                 return default_structure
 
+            # Calculate word-based timestamps
+            words = transcript.split()
+            total_words = len(words)
+            
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",  # Changed from gpt-4o-mini to gpt-4
+                model="gpt-4",  # Changed from gpt-4o-mini to gpt-4
                 messages=[
-                    {"role": "system", "content": """You are a teaching evaluator. Analyze the transcript and return a JSON object with this exact structure:
-                    {
-                        "Concept Assessment": {
-                            "Subject Matter Accuracy": {"Score": 0/1, "Citations": ["[MM:SS] exact quote"]},
-                            "First Principles Approach": {"Score": 0/1, "Citations": ["[MM:SS] exact quote"]},
-                            "Examples and Business Context": {"Score": 0/1, "Citations": ["[MM:SS] exact quote"]},
-                            "Cohesive Storytelling": {"Score": 0/1, "Citations": ["[MM:SS] exact quote"]},
-                            "Engagement and Interaction": {"Score": 0/1, "Citations": ["[MM:SS] exact quote"]},
-                            "Professional Tone": {"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}
-                        },
-                        "Code Assessment": {
-                            "Depth of Explanation": {"Score": 0/1, "Citations": ["[MM:SS] exact quote"]},
-                            "Output Interpretation": {"Score": 0/1, "Citations": ["[MM:SS] exact quote"]},
-                            "Breaking down Complexity": {"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}
-                        }
-                    }
+                    {"role": "system", "content": """You are a teaching evaluator analyzing a transcript. 
+                    For each category, you MUST:
+                    1. Find specific evidence in the transcript
+                    2. Calculate timestamps based on word position (150 words/minute)
+                    3. Include exact quotes with proper timestamps
+                    4. Score 1 only if clear evidence exists, 0 if insufficient
                     
-                    Rules:
-                    1. Score must be exactly 0 or 1
-                    2. Citations must include timestamp [MM:SS] and exact quote
-                    3. Never use [00:00] as placeholder
-                    4. Calculate timestamps based on word position (150 words/minute)
-                    5. Always provide at least one citation per category"""},
-                    {"role": "user", "content": f"Analyze this transcript:\n\n{transcript}"}
+                    NEVER use [00:00] as a placeholder timestamp."""},
+                    {"role": "user", "content": f"""
+                    Analyze this teaching transcript ({total_words} words):
+
+                    {transcript}
+
+                    Provide scores and evidence for each category. Calculate timestamps based on word position.
+                    Return your analysis in this exact JSON format:
+                    {{
+                        "Concept Assessment": {{
+                            "Subject Matter Accuracy": {{"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}},
+                            "First Principles Approach": {{"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}},
+                            "Examples and Business Context": {{"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}},
+                            "Cohesive Storytelling": {{"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}},
+                            "Engagement and Interaction": {{"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}},
+                            "Professional Tone": {{"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}}
+                        }},
+                        "Code Assessment": {{
+                            "Depth of Explanation": {{"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}},
+                            "Output Interpretation": {{"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}},
+                            "Breaking down Complexity": {{"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}}
+                        }}
+                    }}"""}
                 ],
-                temperature=0.3
+                temperature=0.3,
+                max_tokens=2000
             )
             
             try:
                 result = json.loads(response.choices[0].message.content)
                 
-                # Validate structure and fill in missing parts
+                # Validate and ensure proper structure
                 for category in ["Concept Assessment", "Code Assessment"]:
                     if category not in result:
                         result[category] = default_structure[category]
@@ -408,23 +419,48 @@ class ContentAnalyzer:
                                 entry = result[category][subcategory]
                                 if not isinstance(entry, dict):
                                     result[category][subcategory] = default_data
-                                else:
-                                    if "Score" not in entry:
-                                        entry["Score"] = 0
-                                    if "Citations" not in entry or not entry["Citations"]:
-                                        entry["Citations"] = default_data["Citations"]
+                                    continue
                                     
-                                    # Ensure Score is 0 or 1
-                                    entry["Score"] = 1 if entry["Score"] == 1 else 0
+                                # Ensure Score exists and is valid
+                                if "Score" not in entry or not isinstance(entry["Score"], (int, float)):
+                                    entry["Score"] = 0
+                                entry["Score"] = 1 if entry["Score"] == 1 else 0
+                                
+                                # Ensure Citations exist and are valid
+                                if "Citations" not in entry or not entry["Citations"] or not isinstance(entry["Citations"], list):
+                                    # Calculate timestamp based on word position
+                                    word_position = transcript.lower().find(subcategory.lower())
+                                    if word_position == -1:
+                                        timestamp = "00:00"
+                                    else:
+                                        words_before = len(transcript[:word_position].split())
+                                        minutes = words_before // 150
+                                        seconds = (words_before % 150) * 60 // 150
+                                        timestamp = f"{minutes:02d}:{seconds:02d}"
+                                    
+                                    entry["Citations"] = [f"[{timestamp}] Analyzing {subcategory}"]
+                                
+                                # Validate each citation has a timestamp
+                                entry["Citations"] = [
+                                    citation if "[" in citation else f"[{self._get_timestamp(citation)}] {citation}"
+                                    for citation in entry["Citations"]
+                                ]
+                
+                if progress_callback:
+                    progress_callback(0.8, "Analysis complete")
                 
                 return result
                 
-            except json.JSONDecodeError:
-                logger.error("Failed to parse AI response as JSON")
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse AI response: {e}")
+                if progress_callback:
+                    progress_callback(1.0, "Using fallback analysis")
                 return default_structure
                 
         except Exception as e:
             logger.error(f"Content analysis failed: {e}")
+            if progress_callback:
+                progress_callback(1.0, "Analysis failed, using defaults")
             return default_structure
 
     def _get_timestamp(self, transcript: str) -> str:
