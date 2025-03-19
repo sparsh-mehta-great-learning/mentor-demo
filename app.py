@@ -1745,72 +1745,75 @@ def display_evaluation(evaluation: Dict[str, Any]):
             # Display Concept Assessment
             st.subheader("📚 Concept Assessment")
             concept_data = teaching_data.get("Concept Assessment", {})
+            code_data = teaching_data.get("Code Assessment", {})
             
-            if not concept_data:
-                st.info("No concept assessment data available")
+            # Debug output to check structure
+            st.write("Debug - Teaching Data Structure:", teaching_data)
+            
+            if not concept_data and not code_data:
+                st.info("No assessment data available")
             else:
-                # Initialize categories dictionary for improvements
-                categories = {
-                    "💻 Technical": [],
-                    "🎓 Teaching": [],
-                    "🗣️ Communication": []
-                }
-                
-                for category, details in concept_data.items():
-                    # Ensure details is a dictionary and has required fields
-                    if not isinstance(details, dict):
-                        continue
-                    
-                    score = details.get("Score", 0)
-                    citations = details.get("Citations", [])
-                    
-                    # Create a teaching card for each category
-                    st.markdown(f"""
-                        <div class="teaching-card">
-                            <div class="teaching-header">
-                                <span class="category-name">{category}</span>
-                                <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
-                                    {'Pass' if score == 1 else 'Needs Improvement'}
-                                </span>
-                            </div>
-                            <div class="citations-container">
-                    """, unsafe_allow_html=True)
-                    
-                    # Display citations
-                    for citation in citations:
-                        st.markdown(f"""
-                            <div class="citation-box">
-                                <span class="citation-text">{citation}</span>
-                            </div>
-                        """, unsafe_allow_html=True)
-                    
-                    st.markdown("</div></div>", unsafe_allow_html=True)
-                
-                # Display categorized improvements in columns
-                cols = st.columns(len(categories))
-                for col, (category, items) in zip(cols, categories.items()):
-                    with col:
-                        st.markdown(f"""
-                            <div class="improvement-card">
-                                <h5>{category}</h5>
-                                <div class="improvement-list">
-                        """, unsafe_allow_html=True)
-                        
-                        if not items:  # If no items in category
-                            st.markdown("""
-                                <div class="improvement-item">
-                                    No specific improvements needed
-                                </div>
+                # Process Concept Assessment
+                if concept_data:
+                    st.markdown("### Concept Assessment")
+                    for category, details in concept_data.items():
+                        # Ensure details is a dictionary
+                        if isinstance(details, dict):
+                            score = details.get("Score", 0)
+                            citations = details.get("Citations", [])
+                            
+                            st.markdown(f"""
+                                <div class="teaching-card">
+                                    <div class="teaching-header">
+                                        <span class="category-name">{category}</span>
+                                        <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
+                                            {'Pass' if score == 1 else 'Needs Improvement'}
+                                        </span>
+                                    </div>
+                                    <div class="citations-container">
                             """, unsafe_allow_html=True)
-                        else:
-                            for item in items:
+                            
+                            # Display citations
+                            for citation in citations:
                                 st.markdown(f"""
-                                    <div class="improvement-item">
-                                        • {item}
+                                    <div class="citation-box">
+                                        <span class="citation-text">{citation}</span>
                                     </div>
                                 """, unsafe_allow_html=True)
-                        
-                        st.markdown("</div></div>", unsafe_allow_html=True)
+                            
+                            st.markdown("</div></div>", unsafe_allow_html=True)
+                
+                # Process Code Assessment
+                if code_data:
+                    st.markdown("### Code Assessment")
+                    for category, details in code_data.items():
+                        if isinstance(details, dict):
+                            score = details.get("Score", 0)
+                            citations = details.get("Citations", [])
+                            
+                            st.markdown(f"""
+                                <div class="teaching-card">
+                                    <div class="teaching-header">
+                                        <span class="category-name">{category}</span>
+                                        <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
+                                            {'Pass' if score == 1 else 'Needs Improvement'}
+                                        </span>
+                                    </div>
+                                    <div class="citations-container">
+                            """, unsafe_allow_html=True)
+                            
+                            # Display citations
+                            for citation in citations:
+                                st.markdown(f"""
+                                    <div class="citation-box">
+                                        <span class="citation-text">{citation}</span>
+                                    </div>
+                                """, unsafe_allow_html=True)
+                            
+                            st.markdown("</div></div>", unsafe_allow_html=True)
+
+            # Remove the categories section that was causing the error
+            # We'll handle improvements separately if needed
 
         with tabs[2]:
             st.header("Recommendations")
