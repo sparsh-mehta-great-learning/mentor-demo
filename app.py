@@ -355,113 +355,84 @@ class ContentAnalyzer:
             }
         }
 
-        try:
-            if progress_callback:
-                progress_callback(0.2, "Preparing content analysis...")
-            
-            if not transcript or not transcript.strip():
-                return default_structure
-
-            # Calculate word-based timestamps
-            words = transcript.split()
-            total_words = len(words)
-            
-            response = self.client.chat.completions.create(
-                model="gpt-4",  # Changed from gpt-4o-mini to gpt-4
-                messages=[
-                    {"role": "system", "content": """You are a teaching evaluator analyzing a transcript. 
-                    For each category, you MUST:
-                    1. Find specific evidence in the transcript
-                    2. Calculate timestamps based on word position (150 words/minute)
-                    3. Include exact quotes with proper timestamps
-                    4. Score 1 only if clear evidence exists, 0 if insufficient
-                    
-                    NEVER use [00:00] as a placeholder timestamp."""},
-                    {"role": "user", "content": f"""
-                    Analyze this teaching transcript ({total_words} words):
-
-                    {transcript}
-
-                    Provide scores and evidence for each category. Calculate timestamps based on word position.
-                    Return your analysis in this exact JSON format:
-                    {{
-                        "Concept Assessment": {{
-                            "Subject Matter Accuracy": {{"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}},
-                            "First Principles Approach": {{"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}},
-                            "Examples and Business Context": {{"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}},
-                            "Cohesive Storytelling": {{"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}},
-                            "Engagement and Interaction": {{"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}},
-                            "Professional Tone": {{"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}}
-                        }},
-                        "Code Assessment": {{
-                            "Depth of Explanation": {{"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}},
-                            "Output Interpretation": {{"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}},
-                            "Breaking down Complexity": {{"Score": 0/1, "Citations": ["[MM:SS] exact quote"]}}
-                        }}
-                    }}"""}
-                ],
-                temperature=0.3,
-                max_tokens=2000
-            )
-            
+        for attempt in range(self.retry_count):
             try:
-                result = json.loads(response.choices[0].message.content)
+                if progress_callback:
+                    progress_callback(0.2, "Preparing content analysis...")
                 
-                # Validate and ensure proper structure
-                for category in ["Concept Assessment", "Code Assessment"]:
-                    if category not in result:
-                        result[category] = default_structure[category]
-                    else:
-                        for subcategory, default_data in default_structure[category].items():
-                            if subcategory not in result[category]:
-                                result[category][subcategory] = default_data
-                            else:
-                                entry = result[category][subcategory]
-                                if not isinstance(entry, dict):
-                                    result[category][subcategory] = default_data
-                                    continue
-                                    
-                                # Ensure Score exists and is valid
-                                if "Score" not in entry or not isinstance(entry["Score"], (int, float)):
-                                    entry["Score"] = 0
-                                entry["Score"] = 1 if entry["Score"] == 1 else 0
-                                
-                                # Ensure Citations exist and are valid
-                                if "Citations" not in entry or not entry["Citations"] or not isinstance(entry["Citations"], list):
-                                    # Calculate timestamp based on word position
-                                    word_position = transcript.lower().find(subcategory.lower())
-                                    if word_position == -1:
-                                        timestamp = "00:00"
-                                    else:
-                                        words_before = len(transcript[:word_position].split())
-                                        minutes = words_before // 150
-                                        seconds = (words_before % 150) * 60 // 150
-                                        timestamp = f"{minutes:02d}:{seconds:02d}"
-                                    
-                                    entry["Citations"] = [f"[{timestamp}] Analyzing {subcategory}"]
-                                
-                                # Validate each citation has a timestamp
-                                entry["Citations"] = [
-                                    citation if "[" in citation else f"[{self._get_timestamp(citation)}] {citation}"
-                                    for citation in entry["Citations"]
-                                ]
+                prompt = self._create_analysis_prompt(transcript)
                 
                 if progress_callback:
-                    progress_callback(0.8, "Analysis complete")
+                    progress_callback(0.5, "Processing with AI model...")
                 
-                return result
+                try:
+                    response = self.client.chat.completions.create(
+                        model="gpt-4o-mini",  # Using GPT-4 for better analysis
+                        messages=[
+                            {"role": "system", "content": """You are a strict teaching evaluator focusing on core teaching competencies.
+                             For each assessment point, you MUST include specific timestamps [MM:SS] from the transcript.
+                             Never use [00:00] as a placeholder - only use actual timestamps from the transcript.
+                             Each citation must include both the timestamp and a relevant quote showing evidence.
+                             
+                             Score of 1 requires meeting ALL criteria below with clear evidence.
+                             Score of 0 if ANY major teaching deficiency is present.
+                             
+                             Citations format: "[MM:SS] Exact quote from transcript showing evidence"
+                             
+                             Maintain high standards and require clear evidence of quality teaching."""},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.3
+                    )
+                    
+                    logger.info("API call successful")
+                except Exception as api_error:
+                    logger.error(f"API call failed: {str(api_error)}")
+                    raise
                 
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse AI response: {e}")
-                if progress_callback:
-                    progress_callback(1.0, "Using fallback analysis")
-                return default_structure
+                result_text = response.choices[0].message.content.strip()
+                logger.info(f"Raw API response: {result_text[:500]}...")
                 
-        except Exception as e:
-            logger.error(f"Content analysis failed: {e}")
-            if progress_callback:
-                progress_callback(1.0, "Analysis failed, using defaults")
-            return default_structure
+                try:
+                    # Parse the API response
+                    result = json.loads(result_text)
+                    
+                    # Validate and clean up the structure
+                    for category in ["Concept Assessment", "Code Assessment"]:
+                        if category not in result:
+                            result[category] = default_structure[category]
+                        else:
+                            for subcategory in default_structure[category]:
+                                if subcategory not in result[category]:
+                                    result[category][subcategory] = default_structure[category][subcategory]
+                                else:
+                                    # Ensure proper structure and non-empty citations
+                                    entry = result[category][subcategory]
+                                    if not isinstance(entry, dict):
+                                        entry = {"Score": 0, "Citations": []}
+                                    if "Score" not in entry:
+                                        entry["Score"] = 0
+                                    if "Citations" not in entry or not entry["Citations"]:
+                                        entry["Citations"] = [f"[{self._get_timestamp(transcript)}] Insufficient evidence for assessment"]
+                                    # Ensure Score is either 0 or 1
+                                    entry["Score"] = 1 if entry["Score"] == 1 else 0
+                                    result[category][subcategory] = entry
+                    
+                    return result
+                    
+                except json.JSONDecodeError as json_error:
+                    logger.error(f"JSON parsing error: {json_error}")
+                    if attempt == self.retry_count - 1:
+                        # On final attempt, try to extract structured data
+                        return self._extract_structured_data(result_text)
+                    
+            except Exception as e:
+                logger.error(f"Content analysis attempt {attempt + 1} failed: {str(e)}")
+                if attempt == self.retry_count - 1:
+                    return default_structure
+                time.sleep(self.retry_delay * (2 ** attempt))
+        
+        return default_structure
 
     def _get_timestamp(self, transcript: str) -> str:
         """Generate a reasonable timestamp based on transcript length"""
@@ -533,8 +504,8 @@ Do not create new timestamps."""
 
         prompt_template = """Analyze this teaching content with balanced standards. Each criterion should be evaluated fairly, avoiding both excessive strictness and leniency.
 
-Score 1 if MOST key requirements are met with clear evidence. Score 0 if ANY major teaching deficiency is present.
-You MUST provide specific timestamps [MM:SS] for each assessment point.
+Score 1 if MOST key requirements are met with clear evidence. Score 0 if MULTIPLE significant requirements are not met.
+You MUST provide specific citations with timestamps [MM:SS] for each assessment point.
 
 Transcript:
 {transcript}
@@ -543,99 +514,52 @@ Timestamp Instructions:
 {timestamp_instruction}
 
 Required JSON response format:
-{
-    "Concept Assessment": {
-        "Subject Matter Accuracy": {
+{{
+    "Concept Assessment": {{
+        "Subject Matter Accuracy": {{
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"]
-        },
-        "First Principles Approach": {
+        }},
+        "First Principles Approach": {{
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"]
-        },
-        "Examples and Business Context": {
+        }},
+        "Examples and Business Context": {{
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"]
-        },
-        "Cohesive Storytelling": {
+        }},
+        "Cohesive Storytelling": {{
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"]
-        },
-        "Engagement and Interaction": {
+        }},
+        "Engagement and Interaction": {{
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"],
-            "QuestionHandling": {
+            "QuestionConfidence": {{
                 "Score": 0 or 1,
-                "Citations": ["[MM:SS] Exact quote showing evidence"],
-                "Confidence": {
-                    "Score": 0 or 1,
-                    "Level": "HIGH/MEDIUM/LOW",
-                    "Examples": [
-                        {
-                            "Timestamp": "[MM:SS]",
-                            "Question": "Question asked",
-                            "Response": "Response given",
-                            "ConfidenceIndicators": ["List of confidence/uncertainty indicators"]
-                        }
-                    ]
-                },
-                "Accuracy": {
-                    "Score": 0 or 1,
-                    "CorrectAnswers": ["[MM:SS] Example of correct answer"],
-                    "Uncertainties": ["[MM:SS] Example of uncertain/incorrect response"]
-                }
-            }
-        },
-        "Professional Tone": {
+                "Citations": ["[MM:SS] Exact quote showing evidence of question handling"]
+            }}
+        }},
+        "Professional Tone": {{
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"]
-        }
-    },
-    "Code Assessment": {
-        "Depth of Explanation": {
+        }}
+    }},
+    "Code Assessment": {{
+        "Depth of Explanation": {{
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"]
-        },
-        "Output Interpretation": {
+        }},
+        "Output Interpretation": {{
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"]
-        },
-        "Breaking down Complexity": {
+        }},
+        "Breaking down Complexity": {{
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"]
-        }
-    }
-}
-
-Question Handling Assessment Criteria:
-
-Confidence Scoring (STRICT):
-✓ Score 1 ONLY if ALL:
-- Responds without hesitation
-- Uses authoritative tone
-- Provides complete answers
-- Maintains consistent voice level
-- Shows no verbal uncertainty markers
-✗ Score 0 if ANY:
-- Shows hesitation or uncertainty
-- Uses hedging language ("I think", "maybe", "probably")
-- Provides incomplete or vague answers
-- Voice wavers or trails off
-- Uses filler words during responses
-
-Accuracy Scoring (STRICT):
-✓ Score 1 ONLY if ALL:
-- Provides technically correct information
-- Answers align with industry standards
-- Gives complete explanations
-- Can handle follow-up questions
-- Admits knowledge gaps professionally
-✗ Score 0 if ANY:
-- Gives incorrect information
-- Provides misleading explanations
-- Cannot elaborate when asked
-- Avoids answering directly
-- Masks uncertainty with vagueness
+        }}
+    }}
+}}
 
 Balanced Scoring Criteria:
 
@@ -1030,28 +954,6 @@ Required JSON structure:
         }}
     ],
     "questionHandling": {{
-        "confidence": {{
-            "assessment": "Detailed assessment of confidence level",
-            "score": "HIGH/MEDIUM/LOW",
-            "strengths": ["List of confidence strengths"],
-            "weaknesses": ["List of confidence issues"],
-            "examples": [
-                {{
-                    "timestamp": "[MM:SS]",
-                    "context": "Description of interaction",
-                    "analysis": "Analysis of confidence indicators"
-                }}
-            ]
-        }},
-        "accuracy": {{
-            "assessment": "Detailed assessment of answer accuracy",
-            "score": "HIGH/MEDIUM/LOW",
-            "correctExamples": ["List of well-handled questions"],
-            "improvementAreas": ["List of questions that could be handled better"]
-        }},
-        "improvements": [
-            {{
-                "category": "CONFIDENCE/ACCURACY/PREPARATION",
         "confidence": "Assessment of confidence in answering questions",
         "accuracy": "Assessment of answer accuracy",
         "improvements": ["List of specific improvements for question handling"]
@@ -1765,408 +1667,260 @@ def display_evaluation(evaluation: Dict[str, Any]):
         with tabs[1]:
             st.header("Teaching Analysis")
             
-            # Get teaching data and handle potential None/missing data
             teaching_data = evaluation.get("teaching", {})
-            if not teaching_data:
-                st.warning("No teaching analysis data available")
-                return
+            content_analyzer = ContentAnalyzer(st.secrets["OPENAI_API_KEY"])
             
-            # Display Concept Assessment
-            st.subheader("📚 Concept Assessment")
-            concept_data = teaching_data.get("Concept Assessment", {})
-            code_data = teaching_data.get("Code Assessment", {})
-            
-            # Debug output to check structure
-            st.write("Debug - Teaching Data Structure:", teaching_data)
-            
-            if not concept_data and not code_data:
-                st.info("No assessment data available")
-            else:
-                # Process Concept Assessment
-                if concept_data:
-                    st.markdown("### Concept Assessment")
-                    for category, details in concept_data.items():
-                        # Ensure details is a dictionary
-                        if isinstance(details, dict):
-                            score = details.get("Score", 0)
-                            citations = details.get("Citations", [])
-                            
-                            st.markdown(f"""
-                                <div class="teaching-card">
-                                    <div class="teaching-header">
-                                        <span class="category-name">{category}</span>
-                                        <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
-                                            {'Pass' if score == 1 else 'Needs Improvement'}
-                                        </span>
-                                    </div>
-                                    <div class="citations-container">
-                            """, unsafe_allow_html=True)
-                            
-                            # Display citations
-                            for citation in citations:
-                                st.markdown(f"""
-                                    <div class="citation-box">
-                                        <span class="citation-text">{citation}</span>
-                                    </div>
-                                """, unsafe_allow_html=True)
-                            
-                            st.markdown("</div></div>", unsafe_allow_html=True)
+            # Display Concept Assessment with AI-generated suggestions
+            with st.expander("📚 Concept Assessment", expanded=True):
+                concept_data = teaching_data.get("Concept Assessment", {})
                 
-                # Process Code Assessment
-                if code_data:
-                    st.markdown("### Code Assessment")
-                    for category, details in code_data.items():
-                        if isinstance(details, dict):
-                            score = details.get("Score", 0)
-                            citations = details.get("Citations", [])
-                            
+                for category, details in concept_data.items():
+                    score = details.get("Score", 0)
+                    citations = details.get("Citations", [])
+                    
+                    # Get AI-generated suggestions if score is 0
+                    suggestions = []
+                    if score == 0:
+                        suggestions = content_analyzer.generate_suggestions(category, citations)
+                    
+                    # Create suggestions based on score and category
+                    st.markdown(f"""
+                        <div class="teaching-card">
+                            <div class="teaching-header">
+                                <span class="category-name">{category}</span>
+                                <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
+                                    {'✅ Pass' if score == 1 else '❌ Needs Work'}
+                                </span>
+                            </div>
+                            <div class="citations-container">
+                    """, unsafe_allow_html=True)
+                    
+                    # Display citations
+                    for citation in citations:
+                        st.markdown(f"""
+                            <div class="citation-box">
+                                <i class="citation-text">{citation}</i>
+                            </div>
+                        """, unsafe_allow_html=True)
+                    
+                    # Display AI-generated suggestions if score is 0
+                    if score == 0 and suggestions:
+                        st.markdown("""
+                            <div class="suggestions-box">
+                                <h4>🎯 Suggestions for Improvement:</h4>
+                            </div>
+                        """, unsafe_allow_html=True)
+                        for suggestion in suggestions:
                             st.markdown(f"""
-                                <div class="teaching-card">
-                                    <div class="teaching-header">
-                                        <span class="category-name">{category}</span>
-                                        <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
-                                            {'Pass' if score == 1 else 'Needs Improvement'}
-                                        </span>
-                                    </div>
-                                    <div class="citations-container">
+                                <div class="suggestion-item">
+                                    • {suggestion}
+                                </div>
                             """, unsafe_allow_html=True)
-                            
-                            # Display citations
-                            for citation in citations:
-                                st.markdown(f"""
-                                    <div class="citation-box">
-                                        <span class="citation-text">{citation}</span>
-                                    </div>
-                                """, unsafe_allow_html=True)
-                            
-                            st.markdown("</div></div>", unsafe_allow_html=True)
-
-            # Remove the categories section that was causing the error
-            # We'll handle improvements separately if needed
+                    
+                    st.markdown("</div></div>", unsafe_allow_html=True)
+                    st.markdown("---")
+            
+            # Display Code Assessment with AI-generated suggestions
+            with st.expander("💻 Code Assessment", expanded=True):
+                code_data = teaching_data.get("Code Assessment", {})
+                
+                for category, details in code_data.items():
+                    score = details.get("Score", 0)
+                    citations = details.get("Citations", [])
+                    
+                    # Get AI-generated suggestions if score is 0
+                    suggestions = []
+                    if score == 0:
+                        suggestions = content_analyzer.generate_suggestions(category, citations)
+                    
+                    # Create suggestions based on score and category
+                    st.markdown(f"""
+                        <div class="teaching-card">
+                            <div class="teaching-header">
+                                <span class="category-name">{category}</span>
+                                <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
+                                    {'✅ Pass' if score == 1 else '❌ Needs Work'}
+                                </span>
+                            </div>
+                            <div class="citations-container">
+                    """, unsafe_allow_html=True)
+                    
+                    for citation in citations:
+                        st.markdown(f"""
+                            <div class="citation-box">
+                                <i class="citation-text">{citation}</i>
+                            </div>
+                        """, unsafe_allow_html=True)
+                    
+                    # Display AI-generated suggestions if score is 0
+                    if score == 0 and suggestions:
+                        st.markdown("""
+                            <div class="suggestions-box">
+                                <h4>🎯Suggestions for Improvement:</h4>
+                            </div>
+                        """, unsafe_allow_html=True)
+                        for suggestion in suggestions:
+                            st.markdown(f"""
+                                <div class="suggestion-item">
+                                    • {suggestion}
+                                </div>
+                            """, unsafe_allow_html=True)
+                    
+                    st.markdown("</div></div>", unsafe_allow_html=True)
+                    st.markdown("---")
 
         with tabs[2]:
             st.header("Recommendations")
-            
-            # Get recommendations and handle potential None/missing data
             recommendations = evaluation.get("recommendations", {})
-            if not recommendations:
-                st.warning("No recommendations available")
-                return
             
-            # Display overall summary
+            # Display summary in a styled card
             if "summary" in recommendations:
-                st.subheader("Overall Summary")
-                st.write(recommendations["summary"])
-                st.markdown("---")
+                st.markdown("""
+                    <div class="summary-card">
+                        <h4>📊 Overall Summary</h4>
+                        <div class="summary-content">
+                """, unsafe_allow_html=True)
+                st.markdown(recommendations["summary"])
+                st.markdown("</div></div>", unsafe_allow_html=True)
             
-            # Display categorized improvements
-            if "improvements" in recommendations:
-                st.subheader("Areas for Improvement")
-                improvements = recommendations["improvements"]
+            # Display improvements using categories from content analysis
+            st.markdown("<h4>💡 Areas for Improvement</h4>", unsafe_allow_html=True)
+            improvements = recommendations.get("improvements", [])
+            
+            if isinstance(improvements, list):
+                # Use predefined categories
+                categories = {
+                    "🗣️ Communication": [],
+                    "📚 Teaching": [],
+                    "💻 Technical": []
+                }
+                
+                # Each improvement should now come with a category from the content analysis
                 for improvement in improvements:
-                    # Handle both string and dictionary improvement formats
                     if isinstance(improvement, dict):
-                        message = improvement.get("message", "")
-                        category = improvement.get("category", "")
-                        st.markdown(f"**[{category}]** {message}")
+                        category = improvement.get("category", "💻 Technical")  # Default to Technical if no category
+                        message = improvement.get("message", str(improvement))
+                        if "COMMUNICATION" in category.upper():
+                            categories["🗣️ Communication"].append(message)
+                        elif "TEACHING" in category.upper():
+                            categories["📚 Teaching"].append(message)
+                        elif "TECHNICAL" in category.upper():
+                            categories["💻 Technical"].append(message)
                     else:
-                        st.markdown(f"• {improvement}")
+                        # Handle legacy format or plain strings
+                        categories["💻 Technical"].append(improvement)
+                
+                # Display categorized improvements in columns
+                cols = st.columns(len(categories))
+                for col, (category, items) in zip(cols, categories.items()):
+                    with col:
+                        st.markdown(f"""
+                            <div class="improvement-card">
+                                <h5>{category}</h5>
+                                <div class="improvement-list">
+                        """, unsafe_allow_html=True)
+                        
+                        for item in items:
+                            st.markdown(f"""
+                                <div class="improvement-item">
+                                    • {item}
+                                </div>
+                            """, unsafe_allow_html=True)
+                        
+                        st.markdown("</div></div>", unsafe_allow_html=True)
             
             # Add additional CSS for new components
             st.markdown("""
                 <style>
-                .recommendation-card {
-                    background-color: #ffffff;
-                    border-left: 4px solid #1f77b4;
-                    padding: 15px;
+                .teaching-card {
+                    background: white;
+                    border-radius: 8px;
+                    padding: 20px;
                     margin: 10px 0;
-                    border-radius: 4px;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                 }
                 
-                .recommendation-card h4 {
-                    color: #1f77b4;
-                    margin: 0 0 10px 0;
+                .teaching-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 15px;
                 }
                 
-                .rigor-card {
-                    background-color: #ffffff;
-                    border: 1px solid #e0e0e0;
-                    padding: 20px;
-                    margin: 10px 0;
-                    border-radius: 8px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                .category-name {
+                    font-size: 1.2em;
+                    font-weight: bold;
+                    color: #1f77b4;
                 }
                 
                 .score-badge {
-                    display: inline-block;
-                    padding: 4px 12px;
+                    padding: 5px 15px;
                     border-radius: 15px;
                     font-weight: bold;
-                    margin: 10px 0;
                 }
                 
-                .green-score {
+                .score-pass {
                     background-color: #28a745;
                     color: white;
                 }
                 
-                .orange-score {
-                    background-color: #fd7e14;
+                .score-fail {
+                    background-color: #dc3545;
                     color: white;
                 }
                 
-                .metric-container {
-                    background-color: #f8f9fa;
-                    padding: 15px;
-                    border-radius: 8px;
-                    margin: 10px 0;
+                .citations-container {
+                    margin-top: 10px;
                 }
                 
-                .profile-guide {
-                    background-color: #f8f9fa;
-                    padding: 15px;
-                    border-radius: 8px;
-                    margin-bottom: 20px;
-                    border-left: 4px solid #1f77b4;
-                }
-                
-                .profile-card {
-                    background-color: #ffffff;
-                    border: 1px solid #e0e0e0;
-                    border-radius: 8px;
-                    padding: 20px;
-                    margin: 10px 0;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                    transition: all 0.3s ease;
-                }
-                
-                .profile-card.recommended {
-                    border-left: 4px solid #28a745;
-                }
-                
-                .profile-header {
-                    margin-bottom: 15px;
-                }
-                
-                .profile-badge {
-                    display: inline-block;
-                    padding: 4px 12px;
-                    border-radius: 15px;
-                    font-size: 0.9em;
-                    margin-top: 5px;
-                    background-color: #f8f9fa;
-                }
-                
-                .profile-content ul {
-                    margin: 10px 0;
-                    padding-left: 20px;
-                }
-                
-                .recommendation-status {
-                    margin-top: 15px;
+                .citation-box {
+                    background: #f8f9fa;
+                    border-left: 3px solid #6c757d;
                     padding: 10px;
-                    border-radius: 4px;
-                    background-color: #f8f9fa;
-                    font-weight: bold;
-                }
-                
-                .recommendation-status small {
-                    display: block;
-                    margin-top: 5px;
-                    font-weight: normal;
-                    color: #666;
-                }
-                
-                .recommendation-status.recommended {
-                    background-color: #d4edda;
-                    border-color: #c3e6cb;
-                    color: #155724;
-                }
-                
-                .recommendation-status:not(.recommended) {
-                    background-color: #fff3cd;
-                    border-color: #ffeeba;
-                    color: #856404;
-                }
-                
-                .profile-card.recommended {
-                    border-left: 4px solid #28a745;
-                    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.1);
-                }
-                
-                .profile-card:not(.recommended) {
-                    border-left: 4px solid #ffc107;
-                    opacity: 0.8;
-                }
-                
-                .profile-card:hover {
-                    transform: translateY(-2px);
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-                }
-                
-                .progress-metric {
-                    background: linear-gradient(135deg, #f6f8fa 0%, #ffffff 100%);
-                    padding: 10px 15px;
-                    border-radius: 8px;
-                    border-left: 4px solid #1f77b4;
                     margin: 5px 0;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                    transition: transform 0.2s ease;
-                }
-                
-                .progress-metric:hover {
-                    transform: translateX(5px);
-                }
-                
-                .progress-metric b {
-                    color: #1f77b4;
-                }
-                
-                /* Enhanced status messages */
-                .status-message {
-                    padding: 10px;
-                    border-radius: 8px;
-                    margin: 5px 0;
-                    animation: fadeIn 0.5s ease;
-                }
-                
-                .status-processing {
-                    background: linear-gradient(135deg, #f0f7ff 0%, #e5f0ff 100%);
-                    border-left: 4px solid #1f77b4;
-                }
-                
-                .status-complete {
-                    background: linear-gradient(135deg, #f0fff0 0%, #e5ffe5 100%);
-                    border-left: 4px solid #28a745;
-                }
-                
-                .status-error {
-                    background: linear-gradient(135deg, #fff0f0 0%, #ffe5e5 100%);
-                    border-left: 4px solid #dc3545;
-                }
-                
-                /* Progress bar enhancement */
-                .stProgress > div > div {
-                    background-image: linear-gradient(
-                        to right,
-                        rgba(31, 119, 180, 0.8),
-                        rgba(31, 119, 180, 1)
-                    );
-                    transition: width 0.3s ease;
-                }
-                
-                /* Batch indicator animation */
-                @keyframes pulse {
-                    0% { transform: scale(1); }
-                    50% { transform: scale(1.05); }
-                    100% { transform: scale(1); }
-                }
-                
-                .batch-indicator {
-                    display: inline-block;
-                    padding: 4px 8px;
-                    background: #1f77b4;
-                    color: white;
-                    border-radius: 4px;
-                    animation: pulse 1s infinite;
-                }
-                
-                .metric-box {
-                    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-                    padding: 10px;
-                    border-radius: 8px;
-                    margin: 5px;
-                    border-left: 4px solid #1f77b4;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                    transition: transform 0.2s ease;
-                }
-                
-                .metric-box:hover {
-                    transform: translateX(5px);
-                }
-                
-                .metric-box.batch {
-                    border-left-color: #28a745;
-                }
-                
-                .metric-box.time {
-                    border-left-color: #dc3545;
-                }
-                
-                .metric-box.progress {
-                    border-left-color: #ffc107;
-                }
-                
-                .metric-box.segment {
-                    border-left-color: #17a2b8;
-                }
-                
-                .metric-box b {
-                    color: #1f77b4;
-                }
-                
-                <style>
-                .metric-explanation-card {
-                    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-                    padding: 15px;
-                    border-radius: 8px;
-                    margin-top: 15px;
-                    border-left: 4px solid #17a2b8;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                }
-                
-                .metric-explanation-card h4 {
-                    color: #17a2b8;
-                    margin-bottom: 10px;
-                }
-                
-                .metric-explanation-card ul {
-                    list-style-type: none;
-                    padding-left: 0;
-                }
-                
-                .metric-explanation-card li {
-                    margin-bottom: 12px;
-                    padding-left: 15px;
-                    border-left: 2px solid #e9ecef;
-                }
-                
-                .metric-explanation-card li:hover {
-                    border-left: 2px solid #17a2b8;
-                }
-                </style>
-                
-                <style>
-                /* ... existing styles ... */
-                
-                .suggestions-box {
-                    background-color: #f8f9fa;
-                    padding: 10px 15px;
-                    margin-top: 15px;
-                    border-radius: 8px;
-                    border-left: 4px solid #ffc107;
-                }
-                
-                .suggestions-box h4 {
-                    color: #856404;
-                    margin: 0;
-                    padding: 5px 0;
-                }
-                
-                .suggestion-item {
-                    padding: 5px 15px;
-                    color: #666;
-                    border-left: 2px solid #ffc107;
-                    margin: 5px 0;
-                    background-color: #fff;
                     border-radius: 0 4px 4px 0;
                 }
                 
-                .suggestion-item:hover {
-                    background-color: #fff9e6;
-                    transform: translateX(5px);
-                    transition: all 0.2s ease;
+                .citation-text {
+                    color: #495057;
+                }
+                
+                .summary-card {
+                    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+                    border-radius: 8px;
+                    padding: 20px;
+                    margin: 15px 0;
+                    border-left: 4px solid #1f77b4;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }
+                
+                .improvement-card {
+                    background: white;
+                    border-radius: 8px;
+                    padding: 15px;
+                    margin: 10px 0;
+                    height: 100%;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }
+                
+                .improvement-card h5 {
+                    color: #1f77b4;
+                    margin-bottom: 10px;
+                    border-bottom: 2px solid #f0f0f0;
+                    padding-bottom: 5px;
+                }
+                
+                .improvement-list {
+                    margin-top: 10px;
+                }
+                
+                .improvement-item {
+                    padding: 5px 0;
+                    border-bottom: 1px solid #f0f0f0;
+                }
+                
+                .improvement-item:last-child {
+                    border-bottom: none;
                 }
                 </style>
             """, unsafe_allow_html=True)
