@@ -337,6 +337,24 @@ class ContentAnalyzer:
                 "Professional Tone": {
                     "Score": 0,
                     "Citations": ["[00:00] Unable to assess - insufficient evidence"]
+                },
+                "Question Handling": {
+                    "Score": 0,
+                    "Citations": ["[00:00] Unable to assess - insufficient evidence"],
+                    "Details": {
+                        "ResponseAccuracy": {
+                            "Score": 0,
+                            "Citations": ["[00:00] Unable to assess - insufficient evidence"]
+                        },
+                        "ResponseCompleteness": {
+                            "Score": 0,
+                            "Citations": ["[00:00] Unable to assess - insufficient evidence"]
+                        },
+                        "ConfidenceLevel": {
+                            "Score": 0,
+                            "Citations": ["[00:00] Unable to assess - insufficient evidence"]
+                        }
+                    }
                 }
             },
             "Code Assessment": {
@@ -543,6 +561,24 @@ Required JSON response format:
         "Professional Tone": {{
             "Score": 0 or 1,
             "Citations": ["[MM:SS] Exact quote showing evidence"]
+        }},
+        "Question Handling": {{
+            "Score": 0 or 1,
+            "Citations": ["[MM:SS] Exact quote showing evidence of question handling"],
+            "Details": {{
+                "ResponseAccuracy": {{
+                    "Score": 0 or 1,
+                    "Citations": ["[MM:SS] Exact quote showing evidence of response accuracy"]
+                }},
+                "ResponseCompleteness": {{
+                    "Score": 0 or 1,
+                    "Citations": ["[MM:SS] Exact quote showing evidence of response completeness"]
+                }},
+                "ConfidenceLevel": {{
+                    "Score": 0 or 1,
+                    "Citations": ["[MM:SS] Exact quote showing evidence of confidence level"]
+                }}
+            }}
         }}
     }},
     "Code Assessment": {{
@@ -1768,6 +1804,66 @@ def display_evaluation(evaluation: Dict[str, Any]):
                     
                     st.markdown("</div></div>", unsafe_allow_html=True)
                     st.markdown("---")
+
+            # Add Question Handling Assessment section
+            with st.expander("❓ Question Handling Assessment", expanded=True):
+                teaching_data = evaluation.get("teaching", {})
+                concept_data = teaching_data.get("Concept Assessment", {})
+                question_data = concept_data.get("Question Handling", {})
+                
+                # Overall Question Handling Score
+                overall_score = question_data.get("Score", 0)
+                st.markdown(f"""
+                    <div class="teaching-card">
+                        <div class="teaching-header">
+                            <span class="category-name">Overall Question Handling</span>
+                            <span class="score-badge {'score-pass' if overall_score == 1 else 'score-fail'}">
+                                {'✅ Excellent' if overall_score == 1 else '❌ Needs Improvement'}
+                            </span>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+                # Detailed Assessment Categories
+                details = question_data.get("Details", {})
+                for category, data in details.items():
+                    score = data.get("Score", 0)
+                    citations = data.get("Citations", [])
+                    
+                    st.markdown(f"""
+                        <div class="teaching-card">
+                            <div class="teaching-header">
+                                <span class="category-name">{category}</span>
+                                <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
+                                    {'✅ Pass' if score == 1 else '❌ Needs Work'}
+                                </span>
+                            </div>
+                            <div class="citations-container">
+                    """, unsafe_allow_html=True)
+                    
+                    for citation in citations:
+                        st.markdown(f"""
+                            <div class="citation-box">
+                                <i class="citation-text">{citation}</i>
+                            </div>
+                        """, unsafe_allow_html=True)
+                    
+                    if score == 0:
+                        suggestions = content_analyzer.generate_suggestions(category, citations)
+                        if suggestions:
+                            st.markdown("""
+                                <div class="suggestions-box">
+                                    <h4>🎯 Suggestions for Improvement:</h4>
+                                </div>
+                            """, unsafe_allow_html=True)
+                            for suggestion in suggestions:
+                                st.markdown(f"""
+                                    <div class="suggestion-item">
+                                        • {suggestion}
+                                    </div>
+                                """, unsafe_allow_html=True)
+                    
+                    st.markdown("</div></div>", unsafe_allow_html=True)
 
         with tabs[2]:
             st.header("Recommendations")
