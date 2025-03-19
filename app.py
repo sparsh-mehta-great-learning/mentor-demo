@@ -344,15 +344,44 @@ class ContentAnalyzer:
                     "Details": {
                         "ResponseAccuracy": {
                             "Score": 0,
-                            "Citations": ["[00:00] Unable to assess - insufficient evidence"]
+                            "Citations": ["[00:00] Unable to assess - insufficient evidence"],
+                            "Requirements": {
+                                "TechnicalAccuracy": False,
+                                "FactualCorrectness": False,
+                                "NoMisleadingInfo": False
+                            }
                         },
                         "ResponseCompleteness": {
                             "Score": 0,
-                            "Citations": ["[00:00] Unable to assess - insufficient evidence"]
+                            "Citations": ["[00:00] Unable to assess - insufficient evidence"],
+                            "Requirements": {
+                                "AddressesAllParts": False,
+                                "ProvidesContext": False,
+                                "IncludesExamples": False
+                            }
                         },
                         "ConfidenceLevel": {
                             "Score": 0,
-                            "Citations": ["[00:00] Unable to assess - insufficient evidence"]
+                            "Citations": ["[00:00] Unable to assess - insufficient evidence"],
+                            "Requirements": {
+                                "ClearDelivery": False,
+                                "NoHesitation": False,
+                                "HandlesFollowUp": False
+                            }
+                        },
+                        "ResponseTime": {
+                            "Score": 0,
+                            "Citations": ["[00:00] Unable to assess - insufficient evidence"],
+                            "AverageResponseTime": 0.0
+                        },
+                        "ClarificationSkills": {
+                            "Score": 0,
+                            "Citations": ["[00:00] Unable to assess - insufficient evidence"],
+                            "Requirements": {
+                                "AsksProbing": False,
+                                "ConfirmsUnderstanding": False,
+                                "ReframesComplex": False
+                            }
                         }
                     }
                 }
@@ -709,6 +738,45 @@ Important:
 - Score 0 requires MULTIPLE significant issues
 - Use specific evidence from transcript
 - Balance between being overly strict and too lenient
+
+Question Handling Assessment Criteria (ALL must be met for score of 1):
+
+1. Response Accuracy (Must meet ALL):
+   - Technical information must be 100% accurate
+   - All factual statements must be verifiable
+   - No misleading or ambiguous information
+   - Citations must show clear evidence of accurate responses
+
+2. Response Completeness (Must meet ALL):
+   - Must address ALL parts of each question
+   - Must provide necessary context
+   - Must include relevant examples where appropriate
+   - No partial or incomplete answers accepted
+
+3. Confidence Level (Must meet ALL):
+   - Clear, authoritative delivery
+   - No hesitation or uncertainty in responses
+   - Confident handling of follow-up questions
+   - Maintains professional tone throughout
+
+4. Response Time:
+   - Must respond within 3-5 seconds of question
+   - Longer response times must be justified by question complexity
+   - Must acknowledge question immediately even if full response needs time
+
+5. Clarification Skills (Must meet ALL):
+   - Asks probing questions when needed
+   - Confirms understanding before answering
+   - Reframes complex questions effectively
+   - Ensures question intent is fully understood
+
+Score 0 if ANY of the following are present:
+- Any technical inaccuracy
+- Incomplete or partial answers
+- Excessive hesitation or uncertainty
+- Failure to ask clarifying questions when needed
+- Missing examples or context
+- Delayed responses without justification
 """
 
         return prompt_template.format(
