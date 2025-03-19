@@ -771,6 +771,8 @@ Question Handling Assessment Criteria (ALL must be met for score of 1):
    - Ensures question intent is fully understood
 
 Score 0 if ANY of the following are present:
+- If the response is not 100% accurate
+- Speaker is not clear and confident and says According to me or I dont know
 - Any technical inaccuracy
 - Incomplete or partial answers
 - Excessive hesitation or uncertainty
