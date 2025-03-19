@@ -1749,12 +1749,42 @@ def display_evaluation(evaluation: Dict[str, Any]):
             if not concept_data:
                 st.info("No concept assessment data available")
             else:
+                # Initialize categories dictionary for improvements
+                categories = {
+                    "💻 Technical": [],
+                    "🎓 Teaching": [],
+                    "🗣️ Communication": []
+                }
+                
                 for category, details in concept_data.items():
                     # Ensure details is a dictionary and has required fields
                     if not isinstance(details, dict):
                         continue
-                        # Handle legacy format or plain strings
-                        categories["💻 Technical"].append(improvement)
+                    
+                    score = details.get("Score", 0)
+                    citations = details.get("Citations", [])
+                    
+                    # Create a teaching card for each category
+                    st.markdown(f"""
+                        <div class="teaching-card">
+                            <div class="teaching-header">
+                                <span class="category-name">{category}</span>
+                                <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
+                                    {'Pass' if score == 1 else 'Needs Improvement'}
+                                </span>
+                            </div>
+                            <div class="citations-container">
+                    """, unsafe_allow_html=True)
+                    
+                    # Display citations
+                    for citation in citations:
+                        st.markdown(f"""
+                            <div class="citation-box">
+                                <span class="citation-text">{citation}</span>
+                            </div>
+                        """, unsafe_allow_html=True)
+                    
+                    st.markdown("</div></div>", unsafe_allow_html=True)
                 
                 # Display categorized improvements in columns
                 cols = st.columns(len(categories))
@@ -1766,107 +1796,345 @@ def display_evaluation(evaluation: Dict[str, Any]):
                                 <div class="improvement-list">
                         """, unsafe_allow_html=True)
                         
-                        for item in items:
-                            st.markdown(f"""
+                        if not items:  # If no items in category
+                            st.markdown("""
                                 <div class="improvement-item">
-                                    • {item}
+                                    No specific improvements needed
                                 </div>
                             """, unsafe_allow_html=True)
+                        else:
+                            for item in items:
+                                st.markdown(f"""
+                                    <div class="improvement-item">
+                                        • {item}
+                                    </div>
+                                """, unsafe_allow_html=True)
                         
                         st.markdown("</div></div>", unsafe_allow_html=True)
+
+        with tabs[2]:
+            st.header("Recommendations")
+            
+            # Get recommendations and handle potential None/missing data
+            recommendations = evaluation.get("recommendations", {})
+            if not recommendations:
+                st.warning("No recommendations available")
+                return
+            
+            # Display overall summary
+            if "summary" in recommendations:
+                st.subheader("Overall Summary")
+                st.write(recommendations["summary"])
+                st.markdown("---")
+            
+            # Display categorized improvements
+            if "improvements" in recommendations:
+                st.subheader("Areas for Improvement")
+                improvements = recommendations["improvements"]
+                for improvement in improvements:
+                    # Handle both string and dictionary improvement formats
+                    if isinstance(improvement, dict):
+                        message = improvement.get("message", "")
+                        category = improvement.get("category", "")
+                        st.markdown(f"**[{category}]** {message}")
+                    else:
+                        st.markdown(f"• {improvement}")
             
             # Add additional CSS for new components
             st.markdown("""
                 <style>
-                .teaching-card {
-                    background: white;
-                    border-radius: 8px;
-                    padding: 20px;
+                .recommendation-card {
+                    background-color: #ffffff;
+                    border-left: 4px solid #1f77b4;
+                    padding: 15px;
                     margin: 10px 0;
+                    border-radius: 4px;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                 }
                 
-                .teaching-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    margin-bottom: 15px;
+                .recommendation-card h4 {
+                    color: #1f77b4;
+                    margin: 0 0 10px 0;
                 }
                 
-                .category-name {
-                    font-size: 1.2em;
-                    font-weight: bold;
-                    color: #1f77b4;
+                .rigor-card {
+                    background-color: #ffffff;
+                    border: 1px solid #e0e0e0;
+                    padding: 20px;
+                    margin: 10px 0;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
                 }
                 
                 .score-badge {
-                    padding: 5px 15px;
+                    display: inline-block;
+                    padding: 4px 12px;
                     border-radius: 15px;
                     font-weight: bold;
+                    margin: 10px 0;
                 }
                 
-                .score-pass {
+                .green-score {
                     background-color: #28a745;
                     color: white;
                 }
                 
-                .score-fail {
-                    background-color: #dc3545;
+                .orange-score {
+                    background-color: #fd7e14;
                     color: white;
                 }
                 
-                .citations-container {
-                    margin-top: 10px;
+                .metric-container {
+                    background-color: #f8f9fa;
+                    padding: 15px;
+                    border-radius: 8px;
+                    margin: 10px 0;
                 }
                 
-                .citation-box {
-                    background: #f8f9fa;
-                    border-left: 3px solid #6c757d;
+                .profile-guide {
+                    background-color: #f8f9fa;
+                    padding: 15px;
+                    border-radius: 8px;
+                    margin-bottom: 20px;
+                    border-left: 4px solid #1f77b4;
+                }
+                
+                .profile-card {
+                    background-color: #ffffff;
+                    border: 1px solid #e0e0e0;
+                    border-radius: 8px;
+                    padding: 20px;
+                    margin: 10px 0;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                    transition: all 0.3s ease;
+                }
+                
+                .profile-card.recommended {
+                    border-left: 4px solid #28a745;
+                }
+                
+                .profile-header {
+                    margin-bottom: 15px;
+                }
+                
+                .profile-badge {
+                    display: inline-block;
+                    padding: 4px 12px;
+                    border-radius: 15px;
+                    font-size: 0.9em;
+                    margin-top: 5px;
+                    background-color: #f8f9fa;
+                }
+                
+                .profile-content ul {
+                    margin: 10px 0;
+                    padding-left: 20px;
+                }
+                
+                .recommendation-status {
+                    margin-top: 15px;
                     padding: 10px;
+                    border-radius: 4px;
+                    background-color: #f8f9fa;
+                    font-weight: bold;
+                }
+                
+                .recommendation-status small {
+                    display: block;
+                    margin-top: 5px;
+                    font-weight: normal;
+                    color: #666;
+                }
+                
+                .recommendation-status.recommended {
+                    background-color: #d4edda;
+                    border-color: #c3e6cb;
+                    color: #155724;
+                }
+                
+                .recommendation-status:not(.recommended) {
+                    background-color: #fff3cd;
+                    border-color: #ffeeba;
+                    color: #856404;
+                }
+                
+                .profile-card.recommended {
+                    border-left: 4px solid #28a745;
+                    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.1);
+                }
+                
+                .profile-card:not(.recommended) {
+                    border-left: 4px solid #ffc107;
+                    opacity: 0.8;
+                }
+                
+                .profile-card:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                }
+                
+                .progress-metric {
+                    background: linear-gradient(135deg, #f6f8fa 0%, #ffffff 100%);
+                    padding: 10px 15px;
+                    border-radius: 8px;
+                    border-left: 4px solid #1f77b4;
                     margin: 5px 0;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                    transition: transform 0.2s ease;
+                }
+                
+                .progress-metric:hover {
+                    transform: translateX(5px);
+                }
+                
+                .progress-metric b {
+                    color: #1f77b4;
+                }
+                
+                /* Enhanced status messages */
+                .status-message {
+                    padding: 10px;
+                    border-radius: 8px;
+                    margin: 5px 0;
+                    animation: fadeIn 0.5s ease;
+                }
+                
+                .status-processing {
+                    background: linear-gradient(135deg, #f0f7ff 0%, #e5f0ff 100%);
+                    border-left: 4px solid #1f77b4;
+                }
+                
+                .status-complete {
+                    background: linear-gradient(135deg, #f0fff0 0%, #e5ffe5 100%);
+                    border-left: 4px solid #28a745;
+                }
+                
+                .status-error {
+                    background: linear-gradient(135deg, #fff0f0 0%, #ffe5e5 100%);
+                    border-left: 4px solid #dc3545;
+                }
+                
+                /* Progress bar enhancement */
+                .stProgress > div > div {
+                    background-image: linear-gradient(
+                        to right,
+                        rgba(31, 119, 180, 0.8),
+                        rgba(31, 119, 180, 1)
+                    );
+                    transition: width 0.3s ease;
+                }
+                
+                /* Batch indicator animation */
+                @keyframes pulse {
+                    0% { transform: scale(1); }
+                    50% { transform: scale(1.05); }
+                    100% { transform: scale(1); }
+                }
+                
+                .batch-indicator {
+                    display: inline-block;
+                    padding: 4px 8px;
+                    background: #1f77b4;
+                    color: white;
+                    border-radius: 4px;
+                    animation: pulse 1s infinite;
+                }
+                
+                .metric-box {
+                    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+                    padding: 10px;
+                    border-radius: 8px;
+                    margin: 5px;
+                    border-left: 4px solid #1f77b4;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                    transition: transform 0.2s ease;
+                }
+                
+                .metric-box:hover {
+                    transform: translateX(5px);
+                }
+                
+                .metric-box.batch {
+                    border-left-color: #28a745;
+                }
+                
+                .metric-box.time {
+                    border-left-color: #dc3545;
+                }
+                
+                .metric-box.progress {
+                    border-left-color: #ffc107;
+                }
+                
+                .metric-box.segment {
+                    border-left-color: #17a2b8;
+                }
+                
+                .metric-box b {
+                    color: #1f77b4;
+                }
+                
+                <style>
+                .metric-explanation-card {
+                    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+                    padding: 15px;
+                    border-radius: 8px;
+                    margin-top: 15px;
+                    border-left: 4px solid #17a2b8;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                }
+                
+                .metric-explanation-card h4 {
+                    color: #17a2b8;
+                    margin-bottom: 10px;
+                }
+                
+                .metric-explanation-card ul {
+                    list-style-type: none;
+                    padding-left: 0;
+                }
+                
+                .metric-explanation-card li {
+                    margin-bottom: 12px;
+                    padding-left: 15px;
+                    border-left: 2px solid #e9ecef;
+                }
+                
+                .metric-explanation-card li:hover {
+                    border-left: 2px solid #17a2b8;
+                }
+                </style>
+                
+                <style>
+                /* ... existing styles ... */
+                
+                .suggestions-box {
+                    background-color: #f8f9fa;
+                    padding: 10px 15px;
+                    margin-top: 15px;
+                    border-radius: 8px;
+                    border-left: 4px solid #ffc107;
+                }
+                
+                .suggestions-box h4 {
+                    color: #856404;
+                    margin: 0;
+                    padding: 5px 0;
+                }
+                
+                .suggestion-item {
+                    padding: 5px 15px;
+                    color: #666;
+                    border-left: 2px solid #ffc107;
+                    margin: 5px 0;
+                    background-color: #fff;
                     border-radius: 0 4px 4px 0;
                 }
                 
-                .citation-text {
-                    color: #495057;
-                }
-                
-                .summary-card {
-                    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-                    border-radius: 8px;
-                    padding: 20px;
-                    margin: 15px 0;
-                    border-left: 4px solid #1f77b4;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }
-                
-                .improvement-card {
-                    background: white;
-                    border-radius: 8px;
-                    padding: 15px;
-                    margin: 10px 0;
-                    height: 100%;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }
-                
-                .improvement-card h5 {
-                    color: #1f77b4;
-                    margin-bottom: 10px;
-                    border-bottom: 2px solid #f0f0f0;
-                    padding-bottom: 5px;
-                }
-                
-                .improvement-list {
-                    margin-top: 10px;
-                }
-                
-                .improvement-item {
-                    padding: 5px 0;
-                    border-bottom: 1px solid #f0f0f0;
-                }
-                
-                .improvement-item:last-child {
-                    border-bottom: none;
+                .suggestion-item:hover {
+                    background-color: #fff9e6;
+                    transform: translateX(5px);
+                    transition: all 0.2s ease;
                 }
                 </style>
             """, unsafe_allow_html=True)
