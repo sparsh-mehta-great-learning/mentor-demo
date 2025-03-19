@@ -1737,106 +1737,65 @@ def display_evaluation(evaluation: Dict[str, Any]):
             st.header("Teaching Analysis")
             
             teaching_data = evaluation.get("teaching", {})
-            content_analyzer = ContentAnalyzer(st.secrets["OPENAI_API_KEY"])
             
-            # Display Concept Assessment with AI-generated suggestions
-            with st.expander("📚 Concept Assessment", expanded=True):
-                concept_data = teaching_data.get("Concept Assessment", {})
-                
-                for category, details in concept_data.items():
-                    score = details.get("Score", 0)
-                    citations = details.get("Citations", [])
-                    
-                    # Get AI-generated suggestions if score is 0
-                    suggestions = []
-                    if score == 0:
-                        suggestions = content_analyzer.generate_suggestions(category, citations)
-                    
-                    # Create suggestions based on score and category
-                    st.markdown(f"""
-                        <div class="teaching-card">
-                            <div class="teaching-header">
-                                <span class="category-name">{category}</span>
-                                <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
-                                    {'✅ Pass' if score == 1 else '❌ Needs Work'}
-                                </span>
-                            </div>
-                            <div class="citations-container">
-                    """, unsafe_allow_html=True)
-                    
-                    # Display citations
-                    for citation in citations:
-                        st.markdown(f"""
-                            <div class="citation-box">
-                                <i class="citation-text">{citation}</i>
-                            </div>
-                        """, unsafe_allow_html=True)
-                    
-                    # Display AI-generated suggestions if score is 0
-                    if score == 0 and suggestions:
-                        st.markdown("""
-                            <div class="suggestions-box">
-                                <h4>🎯 Suggestions for Improvement:</h4>
-                            </div>
-                        """, unsafe_allow_html=True)
-                        for suggestion in suggestions:
-                            st.markdown(f"""
-                                <div class="suggestion-item">
-                                    • {suggestion}
-                                </div>
-                            """, unsafe_allow_html=True)
-                    
-                    st.markdown("</div></div>", unsafe_allow_html=True)
-                    st.markdown("---")
+            # Display Concept Assessment
+            st.subheader("📚 Concept Assessment")
+            concept_data = teaching_data.get("Concept Assessment", {})
             
-            # Display Code Assessment with AI-generated suggestions
-            with st.expander("💻 Code Assessment", expanded=True):
-                code_data = teaching_data.get("Code Assessment", {})
+            for category, details in concept_data.items():
+                score = details.get("Score", 0)
+                citations = details.get("Citations", [])
                 
-                for category, details in code_data.items():
-                    score = details.get("Score", 0)
-                    citations = details.get("Citations", [])
-                    
-                    # Get AI-generated suggestions if score is 0
-                    suggestions = []
-                    if score == 0:
-                        suggestions = content_analyzer.generate_suggestions(category, citations)
-                    
-                    # Create suggestions based on score and category
+                st.markdown(f"""
+                    <div class="teaching-card">
+                        <div class="teaching-header">
+                            <span class="category-name">{category}</span>
+                            <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
+                                {'✅ Pass' if score == 1 else '❌ Needs Work'}
+                            </span>
+                        </div>
+                        <div class="citations-container">
+                """, unsafe_allow_html=True)
+                
+                # Display citations
+                for citation in citations:
                     st.markdown(f"""
-                        <div class="teaching-card">
-                            <div class="teaching-header">
-                                <span class="category-name">{category}</span>
-                                <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
-                                    {'✅ Pass' if score == 1 else '❌ Needs Work'}
-                                </span>
-                            </div>
-                            <div class="citations-container">
+                        <div class="citation-box">
+                            <i class="citation-text">{citation}</i>
+                        </div>
                     """, unsafe_allow_html=True)
-                    
-                    for citation in citations:
-                        st.markdown(f"""
-                            <div class="citation-box">
-                                <i class="citation-text">{citation}</i>
-                            </div>
-                        """, unsafe_allow_html=True)
-                    
-                    # Display AI-generated suggestions if score is 0
-                    if score == 0 and suggestions:
-                        st.markdown("""
-                            <div class="suggestions-box">
-                                <h4>🎯Suggestions for Improvement:</h4>
-                            </div>
-                        """, unsafe_allow_html=True)
-                        for suggestion in suggestions:
-                            st.markdown(f"""
-                                <div class="suggestion-item">
-                                    • {suggestion}
-                                </div>
-                            """, unsafe_allow_html=True)
-                    
-                    st.markdown("</div></div>", unsafe_allow_html=True)
-                    st.markdown("---")
+                
+                st.markdown("</div></div>", unsafe_allow_html=True)
+                st.markdown("---")
+            
+            # Display Code Assessment
+            st.subheader("💻 Code Assessment")
+            code_data = teaching_data.get("Code Assessment", {})
+            
+            for category, details in code_data.items():
+                score = details.get("Score", 0)
+                citations = details.get("Citations", [])
+                
+                st.markdown(f"""
+                    <div class="teaching-card">
+                        <div class="teaching-header">
+                            <span class="category-name">{category}</span>
+                            <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
+                                {'✅ Pass' if score == 1 else '❌ Needs Work'}
+                            </span>
+                        </div>
+                        <div class="citations-container">
+                """, unsafe_allow_html=True)
+                
+                for citation in citations:
+                    st.markdown(f"""
+                        <div class="citation-box">
+                            <i class="citation-text">{citation}</i>
+                        </div>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown("</div></div>", unsafe_allow_html=True)
+                st.markdown("---")
 
         with tabs[2]:
             st.header("Recommendations")
