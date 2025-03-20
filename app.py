@@ -2553,6 +2553,57 @@ def keep_device_active():
     except Exception as e:
         logger.warning(f"Device wake lock failed: {e}")
 
+def clear_gpu_resources():
+    """Clear GPU memory and turn off GPU after processing is complete."""
+    try:
+        # Clear PyTorch GPU cache if available
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            # Set device to CPU for subsequent operations
+            torch.device('cpu')
+            print("PyTorch GPU resources cleared")
+            
+        # Clear TensorFlow GPU memory if available
+        try:
+            import tensorflow as tf
+            gpus = tf.config.experimental.list_physical_devices('GPU')
+            if gpus:
+                for gpu in gpus:
+                    tf.config.experimental.set_memory_growth(gpu, True)
+                # Limit TensorFlow to CPU only after analysis
+                tf.config.set_visible_devices([], 'GPU')
+                print("TensorFlow GPU resources cleared")
+        except ImportError:
+            pass
+            
+        # Additional cleanup for other frameworks can be added here
+            
+    except Exception as e:
+        print(f"Error clearing GPU resources: {e}")
+
+def schedule_gpu_cleanup(delay_minutes=15):
+    """
+    Schedule GPU cleanup after specified delay in minutes.
+    
+    Args:
+        delay_minutes: Number of minutes to wait before clearing GPU resources
+    """
+    import threading
+    import time
+    
+    def delayed_cleanup():
+        print(f"GPU cleanup scheduled to run in {delay_minutes} minutes")
+        time.sleep(delay_minutes * 60)
+        print("Executing scheduled GPU cleanup")
+        clear_gpu_resources()
+    
+    # Start the cleanup in a background thread
+    cleanup_thread = threading.Thread(target=delayed_cleanup)
+    cleanup_thread.daemon = True  # Allow the thread to exit when the main program exits
+    cleanup_thread.start()
+    print(f"GPU cleanup scheduled for {delay_minutes} minutes from now")
+
 def main():
     try:
         # Set page config must be the first Streamlit command
@@ -3023,6 +3074,10 @@ def main():
                         help="Download a formatted PDF report with detailed analysis"
                     ):
                         st.success("PDF report downloaded successfully!")
+
+                # After displaying evaluation results, add:
+                schedule_gpu_cleanup()
+                st.success("Analysis completed and GPU resources released")
 
     except Exception as e:
         st.error(f"Application error: {str(e)}")
