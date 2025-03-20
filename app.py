@@ -759,37 +759,18 @@ Question Handling Assessment Criteria (ALL must be met for score of 1):
    - Confident handling of follow-up questions
    - Maintains professional tone throughout
 
-ResponseTime Assessment Criteria (ALL must be met for score of 1):
+4. Response Time:
+   - Must respond within 3-5 seconds of question
+   - Longer response times must be justified by question complexity
+   - Must acknowledge question immediately even if full response needs time
 
-1. Efficiency (Must meet ALL):
-   - Responds to questions promptly
-   - No excessive delays before answering
-   - Maintains appropriate pace throughout session
-   - Balances thoroughness with timeliness
-
-2. Time Management (Must meet ALL):
-   - Allocates appropriate time to each question
-   - Prioritizes important information effectively
-   - Avoids unnecessarily lengthy explanations
-   - Completes all required content within session time
-
-ClarificationSkills Assessment Criteria (ALL must be met for score of 1):
-
-1. Question Understanding (Must meet ALL):
-   - Correctly interprets the intent of questions
-   - Seeks clarification when questions are ambiguous
-   - Confirms understanding before responding
-   - Avoids answering unrelated or misinterpreted questions
-
-2. Communication Clarity (Must meet ALL):
-   - Provides clear, concise explanations
-   - Uses appropriate analogies or examples to clarify concepts
-   - Checks for understanding from the audience
-   - Rephrases explanations when initial response is insufficient
+5. Clarification Skills (Must meet ALL):
+   - Asks probing questions when needed
+   - Confirms understanding before answering
+   - Reframes complex questions effectively
+   - Ensures question intent is fully understood
 
 Score 0 if ANY of the following are present:
-- If the response is not 100% accurate
-- Speaker is not clear and confident and says According to me or I dont know
 - Any technical inaccuracy
 - Incomplete or partial answers
 - Excessive hesitation or uncertainty
@@ -1894,80 +1875,63 @@ def display_evaluation(evaluation: Dict[str, Any]):
 
             # Add Question Handling Assessment section
             with st.expander("❓ Question Handling Assessment", expanded=True):
+                teaching_data = evaluation.get("teaching", {})
                 concept_data = teaching_data.get("Concept Assessment", {})
                 question_data = concept_data.get("Question Handling", {})
                 
-                if not question_data:
-                    st.warning("Question handling assessment data not available.")
-                else:
-                    # Overall Question Handling Score with safety checks
-                    overall_score = question_data.get("Score", 0)
-                    score_text = "✅ Excellent" if overall_score >= 0.8 else "❌ Needs Improvement"
-                    score_class = "score-pass" if overall_score >= 0.8 else "score-fail"
+                # Overall Question Handling Score
+                overall_score = question_data.get("Score", 0)
+                st.markdown(f"""
+                    <div class="teaching-card">
+                        <div class="teaching-header">
+                            <span class="category-name">Overall Question Handling</span>
+                            <span class="score-badge {'score-pass' if overall_score == 1 else 'score-fail'}">
+                                {'✅ Excellent' if overall_score == 1 else '❌ Needs Improvement'}
+                            </span>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+                # Detailed Assessment Categories
+                details = question_data.get("Details", {})
+                for category, data in details.items():
+                    score = data.get("Score", 0)
+                    citations = data.get("Citations", [])
                     
                     st.markdown(f"""
                         <div class="teaching-card">
                             <div class="teaching-header">
-                                <span class="category-name">Overall Question Handling</span>
-                                <span class="score-badge {score_class}">
-                                    {score_text} ({overall_score:.2f})
+                                <span class="category-name">{category}</span>
+                                <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
+                                    {'✅ Pass' if score == 1 else '❌ Needs Work'}
                                 </span>
                             </div>
-                        </div>
+                            <div class="citations-container">
                     """, unsafe_allow_html=True)
                     
-                    # Display detailed metrics with proper error handling
-                    details = question_data.get("Details", {})
-                    
-                    # Function to safely display each metric
-                    def display_metric(metric_name, metric_data):
-                        if not metric_data:
-                            st.warning(f"{metric_name} data not available.")
-                            return
-                            
-                        score = metric_data.get("Score", 0)
-                        score_text = "✅ Good" if score >= 0.7 else "❌ Needs Work"
-                        score_class = "score-pass" if score >= 0.7 else "score-fail"
-                        
+                    for citation in citations:
                         st.markdown(f"""
-                            <div class="teaching-subcard">
-                                <div class="teaching-subheader">
-                                    <span class="subcategory-name">{metric_name}</span>
-                                    <span class="subscore-badge {score_class}">
-                                        {score_text} ({score:.2f})
-                                    </span>
-                                </div>
+                            <div class="citation-box">
+                                <i class="citation-text">{citation}</i>
                             </div>
                         """, unsafe_allow_html=True)
-                        
-                        # Display citations
-                        citations = metric_data.get("Citations", [])
-                        if citations:
-                            st.markdown("**Evidence:**")
-                            for citation in citations:
-                                st.markdown(f"- {citation}")
-                        
-                        # Display detailed requirements if available
-                        requirements = metric_data.get("Requirements", {})
-                        if requirements:
-                            st.markdown("**Requirements:**")
-                            for req_name, req_met in requirements.items():
-                                status = "✅" if req_met else "❌"
-                                st.markdown(f"- {status} {req_name}")
                     
-                    # Display each metric
-                    for metric_name in ["ResponseAccuracy", "ResponseCompleteness", "ConfidenceLevel", 
-                                        "ResponseTime", "ClarificationSkills"]:
-                        display_metric(metric_name, details.get(metric_name, {}))
+                    if score == 0:
+                        suggestions = content_analyzer.generate_suggestions(category, citations)
+                        if suggestions:
+                            st.markdown("""
+                                <div class="suggestions-box">
+                                    <h4>🎯 Suggestions for Improvement:</h4>
+                                </div>
+                            """, unsafe_allow_html=True)
+                            for suggestion in suggestions:
+                                st.markdown(f"""
+                                    <div class="suggestion-item">
+                                        • {suggestion}
+                                    </div>
+                                """, unsafe_allow_html=True)
                     
-                    # Display citations
-                    st.markdown("### Overall Citations")
-                    citations = question_data.get("Citations", [])
-                    if citations:
-                        for citation in citations:
-                            st.markdown(f"- {citation}")
-                    else:
-                        st.info("No citations available.")
+                    st.markdown("</div></div>", unsafe_allow_html=True)
 
         with tabs[2]:
             st.header("Recommendations")
