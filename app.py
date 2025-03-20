@@ -759,16 +759,33 @@ Question Handling Assessment Criteria (ALL must be met for score of 1):
    - Confident handling of follow-up questions
    - Maintains professional tone throughout
 
-4. Response Time:
-   - Must respond within 3-5 seconds of question
-   - Longer response times must be justified by question complexity
-   - Must acknowledge question immediately even if full response needs time
+ResponseTime Assessment Criteria (ALL must be met for score of 1):
 
-5. Clarification Skills (Must meet ALL):
-   - Asks probing questions when needed
-   - Confirms understanding before answering
-   - Reframes complex questions effectively
-   - Ensures question intent is fully understood
+1. Efficiency (Must meet ALL):
+   - Responds to questions promptly
+   - No excessive delays before answering
+   - Maintains appropriate pace throughout session
+   - Balances thoroughness with timeliness
+
+2. Time Management (Must meet ALL):
+   - Allocates appropriate time to each question
+   - Prioritizes important information effectively
+   - Avoids unnecessarily lengthy explanations
+   - Completes all required content within session time
+
+ClarificationSkills Assessment Criteria (ALL must be met for score of 1):
+
+1. Question Understanding (Must meet ALL):
+   - Correctly interprets the intent of questions
+   - Seeks clarification when questions are ambiguous
+   - Confirms understanding before responding
+   - Avoids answering unrelated or misinterpreted questions
+
+2. Communication Clarity (Must meet ALL):
+   - Provides clear, concise explanations
+   - Uses appropriate analogies or examples to clarify concepts
+   - Checks for understanding from the audience
+   - Rephrases explanations when initial response is insufficient
 
 Score 0 if ANY of the following are present:
 - If the response is not 100% accurate
