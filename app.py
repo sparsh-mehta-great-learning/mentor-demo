@@ -1877,63 +1877,80 @@ def display_evaluation(evaluation: Dict[str, Any]):
 
             # Add Question Handling Assessment section
             with st.expander("❓ Question Handling Assessment", expanded=True):
-                teaching_data = evaluation.get("teaching", {})
                 concept_data = teaching_data.get("Concept Assessment", {})
                 question_data = concept_data.get("Question Handling", {})
                 
-                # Overall Question Handling Score
-                overall_score = question_data.get("Score", 0)
-                st.markdown(f"""
-                    <div class="teaching-card">
-                        <div class="teaching-header">
-                            <span class="category-name">Overall Question Handling</span>
-                            <span class="score-badge {'score-pass' if overall_score == 1 else 'score-fail'}">
-                                {'✅ Excellent' if overall_score == 1 else '❌ Needs Improvement'}
-                            </span>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-
-                # Detailed Assessment Categories
-                details = question_data.get("Details", {})
-                for category, data in details.items():
-                    score = data.get("Score", 0)
-                    citations = data.get("Citations", [])
+                if not question_data:
+                    st.warning("Question handling assessment data not available.")
+                else:
+                    # Overall Question Handling Score with safety checks
+                    overall_score = question_data.get("Score", 0)
+                    score_text = "✅ Excellent" if overall_score >= 0.8 else "❌ Needs Improvement"
+                    score_class = "score-pass" if overall_score >= 0.8 else "score-fail"
                     
                     st.markdown(f"""
                         <div class="teaching-card">
                             <div class="teaching-header">
-                                <span class="category-name">{category}</span>
-                                <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
-                                    {'✅ Pass' if score == 1 else '❌ Needs Work'}
+                                <span class="category-name">Overall Question Handling</span>
+                                <span class="score-badge {score_class}">
+                                    {score_text} ({overall_score:.2f})
                                 </span>
                             </div>
-                            <div class="citations-container">
+                        </div>
                     """, unsafe_allow_html=True)
                     
-                    for citation in citations:
+                    # Display detailed metrics with proper error handling
+                    details = question_data.get("Details", {})
+                    
+                    # Function to safely display each metric
+                    def display_metric(metric_name, metric_data):
+                        if not metric_data:
+                            st.warning(f"{metric_name} data not available.")
+                            return
+                            
+                        score = metric_data.get("Score", 0)
+                        score_text = "✅ Good" if score >= 0.7 else "❌ Needs Work"
+                        score_class = "score-pass" if score >= 0.7 else "score-fail"
+                        
                         st.markdown(f"""
-                            <div class="citation-box">
-                                <i class="citation-text">{citation}</i>
+                            <div class="teaching-subcard">
+                                <div class="teaching-subheader">
+                                    <span class="subcategory-name">{metric_name}</span>
+                                    <span class="subscore-badge {score_class}">
+                                        {score_text} ({score:.2f})
+                                    </span>
+                                </div>
                             </div>
                         """, unsafe_allow_html=True)
+                        
+                        # Display citations
+                        citations = metric_data.get("Citations", [])
+                        if citations:
+                            st.markdown("**Evidence:**")
+                            for citation in citations:
+                                st.markdown(f"- {citation}")
+                        
+                        # Display detailed requirements if available
+                        requirements = metric_data.get("Requirements", {})
+                        if requirements:
+                            st.markdown("**Requirements:**")
+                            for req_name, req_met in requirements.items():
+                                status = "✅" if req_met else "❌"
+                                st.markdown(f"- {status} {req_name}")
                     
-                    if score == 0:
-                        suggestions = content_analyzer.generate_suggestions(category, citations)
-                        if suggestions:
-                            st.markdown("""
-                                <div class="suggestions-box">
-                                    <h4>🎯 Suggestions for Improvement:</h4>
-                                </div>
-                            """, unsafe_allow_html=True)
-                            for suggestion in suggestions:
-                                st.markdown(f"""
-                                    <div class="suggestion-item">
-                                        • {suggestion}
-                                    </div>
-                                """, unsafe_allow_html=True)
+                    # Display each metric
+                    for metric_name in ["ResponseAccuracy", "ResponseCompleteness", "ConfidenceLevel", 
+                                        "ResponseTime", "ClarificationSkills"]:
+                        display_metric(metric_name, details.get(metric_name, {}))
                     
-                    st.markdown("</div></div>", unsafe_allow_html=True)
+                    # Display citations
+                    st.markdown("### Overall Citations")
+                    citations = question_data.get("Citations", [])
+                    if citations:
+                        for citation in citations:
+                            st.markdown(f"- {citation}")
+                    else:
+                        st.info("No citations available.")
 
         with tabs[2]:
             st.header("Recommendations")
