@@ -27,6 +27,7 @@ import concurrent.futures
 import hashlib
 import threading
 import random
+import requests
 
 # Set up logging
 logging.basicConfig(
@@ -2604,6 +2605,44 @@ def schedule_gpu_cleanup(delay_minutes=15):
     cleanup_thread.start()
     print(f"GPU cleanup scheduled for {delay_minutes} minutes from now")
 
+def extract_file_id_from_url(url: str) -> str:
+    """Extract file ID from Google Drive URL."""
+    # Handle different Google Drive URL formats
+    file_id = None
+    if 'drive.google.com/file/d/' in url:
+        file_id = url.split('/file/d/')[1].split('/')[0]
+    elif 'drive.google.com/open?id=' in url:
+        file_id = url.split('id=')[1]
+    return file_id
+
+def download_file_from_drive(file_id: str, destination: str):
+    """Download file from Google Drive."""
+    URL = "https://drive.google.com/uc?export=download&id=" + file_id
+    session = requests.Session()
+    response = session.get(URL, stream=True)
+    
+    # Handle large files that trigger warning page
+    for key, value in response.cookies.items():
+        if key.startswith('download_warning'):
+            URL = URL + '&confirm=' + value
+            response = session.get(URL, stream=True)
+            
+    # Download with progress bar
+    file_size = int(response.headers.get('content-length', 0))
+    progress_bar = st.progress(0)
+    block_size = 1024
+    written = 0
+    
+    with open(destination, 'wb') as f:
+        for data in response.iter_content(block_size):
+            written += len(data)
+            f.write(data)
+            progress = int((written / file_size) * 100)
+            progress_bar.progress(progress if progress <= 100 else 100)
+    
+    progress_bar.empty()
+    return destination
+
 def main():
     try:
         # Set page config must be the first Streamlit command
@@ -2850,15 +2889,29 @@ def main():
         )
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Video upload section
-        st.markdown('<div class="upload-section">', unsafe_allow_html=True)
-        st.markdown('<p class="upload-header">📹 Upload Teaching Video</p>', unsafe_allow_html=True)
-        uploaded_file = st.file_uploader(
-            "Select video file",
-            type=['mp4', 'avi', 'mov'],
-            help="Upload your teaching video (MP4, AVI, or MOV format, max 1GB)"
+        # Add input selection for upload method
+        upload_method = st.radio(
+            "Choose upload method:",
+            ["Direct Upload", "Google Drive Link"]
         )
-        st.markdown('</div>', unsafe_allow_html=True)
+
+        if upload_method == "Direct Upload":
+            uploaded_file = st.file_uploader("Upload your video file", type=['mp4', 'mov', 'avi'])
+        else:
+            drive_link = st.text_input("Enter Google Drive video link")
+            if drive_link:
+                try:
+                    file_id = extract_file_id_from_url(drive_link)
+                    if file_id:
+                        status_placeholder.info("Downloading video from Google Drive...")
+                        temp_dir = tempfile.mkdtemp()
+                        video_path = os.path.join(temp_dir, "downloaded_video.mp4")
+                        download_file_from_drive(file_id, video_path)
+                        uploaded_file = True  # Set flag to indicate file is ready
+                    else:
+                        st.error("Invalid Google Drive link format")
+                except Exception as e:
+                    st.error(f"Error downloading from Google Drive: {str(e)}")
 
         # Transcript upload section (conditional)
         uploaded_transcript = None
