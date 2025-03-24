@@ -2889,6 +2889,10 @@ def main():
         )
         st.markdown('</div>', unsafe_allow_html=True)
 
+        # Initialize uploaded_file and video_path
+        uploaded_file = None
+        video_path = None
+
         # Add input selection for upload method
         upload_method = st.radio(
             "Choose upload method:",
@@ -2907,7 +2911,7 @@ def main():
                         temp_dir = tempfile.mkdtemp()
                         video_path = os.path.join(temp_dir, "downloaded_video.mp4")
                         download_file_from_drive(file_id, video_path)
-                        uploaded_file = True  # Set flag to indicate file is ready
+                        uploaded_file = video_path  # Instead of True, assign the actual path
                     else:
                         st.error("Invalid Google Drive link format")
                 except Exception as e:
