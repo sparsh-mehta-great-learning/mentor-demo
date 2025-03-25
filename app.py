@@ -2609,38 +2609,78 @@ def extract_file_id_from_url(url: str) -> str:
     """Extract file ID from Google Drive URL."""
     # Handle different Google Drive URL formats
     file_id = None
+    
+    # Format: https://drive.google.com/file/d/{fileid}/view?usp=sharing
     if 'drive.google.com/file/d/' in url:
-        file_id = url.split('/file/d/')[1].split('/')[0]
+        try:
+            file_id = url.split('/file/d/')[1].split('/')[0]
+        except IndexError:
+            raise ValueError("Could not extract file ID from the Google Drive link")
+            
+    # Format: https://drive.google.com/open?id={fileid}
     elif 'drive.google.com/open?id=' in url:
-        file_id = url.split('id=')[1]
+        try:
+            file_id = url.split('id=')[1].split('&')[0]
+        except IndexError:
+            raise ValueError("Could not extract file ID from the Google Drive link")
+            
+    if not file_id:
+        raise ValueError("Invalid Google Drive link format")
+        
     return file_id
 
 def download_file_from_drive(file_id: str, destination: str):
     """Download file from Google Drive."""
-    URL = "https://drive.google.com/uc?export=download&id=" + file_id
+    # Use the direct download URL format
+    URL = f"https://drive.google.com/uc?id={file_id}&export=download"
+    
     session = requests.Session()
     response = session.get(URL, stream=True)
+    
+    # Check if the response is valid
+    if response.status_code != 200:
+        raise Exception(f"Failed to access the file. Status code: {response.status_code}")
     
     # Handle large files that trigger warning page
     for key, value in response.cookies.items():
         if key.startswith('download_warning'):
-            URL = URL + '&confirm=' + value
+            URL = f"{URL}&confirm={value}"
             response = session.get(URL, stream=True)
-            
+    
     # Download with progress bar
     file_size = int(response.headers.get('content-length', 0))
     progress_bar = st.progress(0)
-    block_size = 1024
+    block_size = 1024 * 1024  # Increased block size to 1MB
     written = 0
     
-    with open(destination, 'wb') as f:
-        for data in response.iter_content(block_size):
-            written += len(data)
-            f.write(data)
-            progress = int((written / file_size) * 100)
-            progress_bar.progress(progress if progress <= 100 else 100)
+    try:
+        with open(destination, 'wb') as f:
+            if file_size == 0:  # If file size is unknown
+                for data in response.iter_content(block_size):
+                    if data:
+                        written += len(data)
+                        f.write(data)
+                        # Show indeterminate progress
+                        progress_bar.progress(-1)
+            else:
+                for data in response.iter_content(block_size):
+                    if data:
+                        written += len(data)
+                        f.write(data)
+                        progress = min(int((written / file_size) * 100), 100)
+                        progress_bar.progress(progress)
+    except Exception as e:
+        if os.path.exists(destination):
+            os.remove(destination)
+        raise Exception(f"Download failed: {str(e)}")
+    finally:
+        progress_bar.empty()
     
-    progress_bar.empty()
+    # Verify file was downloaded successfully
+    if os.path.getsize(destination) == 0:
+        os.remove(destination)
+        raise Exception("Downloaded file is empty. Please check if the Google Drive link is publicly accessible")
+        
     return destination
 
 def main():
