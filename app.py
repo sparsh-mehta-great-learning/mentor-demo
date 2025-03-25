@@ -2943,6 +2943,12 @@ def main():
 
         if upload_method == "Direct Upload":
             uploaded_file = st.file_uploader("Upload your video file", type=['mp4', 'mov', 'avi'])
+            if uploaded_file:
+                # Save uploaded file to temporary location
+                temp_dir = tempfile.mkdtemp()
+                video_path = os.path.join(temp_dir, uploaded_file.name)
+                with open(video_path, 'wb') as f:
+                    f.write(uploaded_file.getbuffer())
         else:
             drive_link = st.text_input("Enter Google Drive video link")
             if drive_link:
@@ -2953,11 +2959,24 @@ def main():
                         temp_dir = tempfile.mkdtemp()
                         video_path = os.path.join(temp_dir, "downloaded_video.mp4")
                         download_file_from_drive(file_id, video_path)
-                        uploaded_file = video_path  # Instead of True, assign the actual path
+                        uploaded_file = True  # Just a flag to indicate we have a file
                     else:
                         st.error("Invalid Google Drive link format")
                 except Exception as e:
                     st.error(f"Error downloading from Google Drive: {str(e)}")
+
+        if uploaded_file:  # This now acts as a flag for both upload methods
+            try:
+                # Validate the video file
+                validate_video_file(video_path)
+                
+                # Continue with the rest of your processing using video_path
+                # ... rest of your code ...
+
+            except Exception as e:
+                st.error(f"Error processing video: {str(e)}")
+                if os.path.exists(video_path):
+                    os.remove(video_path)
 
         # Transcript upload section (conditional)
         uploaded_transcript = None
