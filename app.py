@@ -2631,7 +2631,6 @@ def extract_file_id_from_url(url: str) -> str:
 
 def download_file_from_drive(file_id: str, destination: str):
     """Download file from Google Drive."""
-    # Use the direct download URL format
     URL = f"https://drive.google.com/uc?id={file_id}&export=download"
     
     session = requests.Session()
@@ -2650,18 +2649,21 @@ def download_file_from_drive(file_id: str, destination: str):
     # Download with progress bar
     file_size = int(response.headers.get('content-length', 0))
     progress_bar = st.progress(0)
-    block_size = 1024 * 1024  # Increased block size to 1MB
+    block_size = 1024 * 1024  # 1MB blocks
     written = 0
     
     try:
         with open(destination, 'wb') as f:
             if file_size == 0:  # If file size is unknown
+                # Use a placeholder progress for unknown size
+                progress_bar.progress(0)
+                st.info("Downloading file (size unknown)...")
                 for data in response.iter_content(block_size):
                     if data:
                         written += len(data)
                         f.write(data)
-                        # Show indeterminate progress
-                        progress_bar.progress(-1)
+                        # Update progress periodically (0 to 100 loop)
+                        progress_bar.progress(written % 100 / 100)
             else:
                 for data in response.iter_content(block_size):
                     if data:
