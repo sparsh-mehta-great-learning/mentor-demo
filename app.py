@@ -27,6 +27,7 @@ import concurrent.futures
 import hashlib
 import threading
 import random
+import nltk
 
 # Set up logging
 logging.basicConfig(
@@ -307,13 +308,11 @@ class ContentAnalyzer:
     """Analyzes teaching content using OpenAI API"""
     def __init__(self, api_key: str):
         self.client = OpenAI(api_key=api_key)
-        self.original_transcript = ""  # Add this line
         self.retry_count = 3
         self.retry_delay = 1
         
     def analyze_content(self, transcript: str, progress_callback=None) -> Dict[str, Any]:
         """Analyze teaching content with strict validation and robust JSON handling"""
-        self.original_transcript = transcript  # Store the transcript
         default_structure = {
             "Concept Assessment": {
                 "Subject Matter Accuracy": {
@@ -483,70 +482,59 @@ class ContentAnalyzer:
         
         return default_structure
 
-    def _get_timestamp(self, transcript: str) -> str:
-        """Generate a reasonable timestamp based on transcript length"""
+    def _get_timestamp(self, transcript: str) -> Dict[str, Any]:
+        """
+        Enhanced version that returns both timestamp and surrounding context
+        """
         # Calculate approximate time based on word count
         words = len(transcript.split())
         minutes = words // 150  # Assuming 150 words per minute
         seconds = (words % 150) * 60 // 150
-        return f"{minutes:02d}:{seconds:02d}"
-
-    def _get_timestamp_context(self, transcript: str, timestamp: str, window: int = 3) -> Dict[str, Any]:
-        """Get rich context around a timestamp including before and after sentences.
+        formatted_time = f"{minutes:02d}:{seconds:02d}"
         
-        Args:
-            transcript: Full transcript text
-            timestamp: The timestamp line containing [MM:SS]
-            window: Number of sentences before and after for context
-        """
-        # Extract the timestamp
-        timestamp_match = re.search(r'\[(\d{2}:\d{2})\]', timestamp)
-        if not timestamp_match:
-            return None
-            
-        timestamp_str = timestamp_match.group(1)
-        
-        # Split transcript into timestamped chunks
-        chunks = []
-        current_chunk = []
-        current_time = None
-        
-        for line in transcript.split('\n'):
-            time_match = re.search(r'\[(\d{2}:\d{2})\]', line)
-            if time_match:
-                if current_chunk:
-                    chunks.append((current_time, ' '.join(current_chunk)))
-                    current_chunk = []
-                current_time = time_match.group(1)
-            if line.strip():
-                current_chunk.append(re.sub(r'\[\d{2}:\d{2}\]', '', line).strip())
-        
-        if current_chunk:
-            chunks.append((current_time, ' '.join(current_chunk)))
-        
-        # Find the target chunk and surrounding context
-        target_idx = None
-        for i, (time, _) in enumerate(chunks):
-            if time == timestamp_str:
-                target_idx = i
-                break
-                
-        if target_idx is None:
-            return None
-            
-        # Gather context
-        start_idx = max(0, target_idx - window)
-        end_idx = min(len(chunks), target_idx + window + 1)
-        
-        context_chunks = chunks[start_idx:end_idx]
+        # Find the start and end indices of the timestamp
+        start_idx = transcript.find(formatted_time)
+        end_idx = start_idx + len(formatted_time)
         
         return {
-            "timestamp": timestamp_str,
-            "focal_text": chunks[target_idx][1],
-            "context_before": [{"time": t, "text": txt} for t, txt in context_chunks[:target_idx-start_idx]],
-            "context_after": [{"time": t, "text": txt} for t, txt in context_chunks[target_idx-start_idx+1:]],
-            "full_context": " ".join(txt for _, txt in context_chunks)
+            'timestamp': formatted_time,
+            'context': self._get_surrounding_context(transcript, start_idx, end_idx)
         }
+
+    def _get_surrounding_context(self, transcript: str, center_start: int, center_end: int, 
+                               context_sentences: int = 2) -> Dict[str, Any]:
+        """
+        Get surrounding sentences for better context
+        """
+        sentences = nltk.sent_tokenize(transcript)
+        
+        # Find the center sentence
+        center_text = transcript[center_start:center_end]
+        center_idx = -1
+        for i, sent in enumerate(sentences):
+            if center_text in sent:
+                center_idx = i
+                break
+                
+        # Get surrounding context
+        start_idx = max(0, center_idx - context_sentences)
+        end_idx = min(len(sentences), center_idx + context_sentences + 1)
+        
+        return {
+            'focus_sentence': sentences[center_idx],
+            'context_before': sentences[start_idx:center_idx],
+            'context_after': sentences[center_idx + 1:end_idx],
+            'start_time': self._find_timestamp(transcript, sentences[start_idx]),
+            'end_time': self._find_timestamp(transcript, sentences[end_idx - 1])
+        }
+
+    def _find_timestamp(self, transcript: str, sentence: str) -> str:
+        """
+        Find the timestamp associated with a given sentence
+        """
+        # This would need to be implemented based on how your transcript
+        # format stores timestamp information
+        pass
 
     def _extract_structured_data(self, text: str) -> Dict[str, Any]:
         """Extract structured data from text response when JSON parsing fails"""
@@ -588,70 +576,260 @@ class ContentAnalyzer:
                             "Citations": citations
                         }
             
-            structured_data = {}
-            current_category = None
-            current_citations = []
-            
-            lines = text.split('\n')
-            for i, line in enumerate(lines):
-                if line.startswith("Category:"):
-                    if current_category and current_citations:
-                        if current_category not in structured_data:
-                            structured_data[current_category] = {"citations": [], "positive": [], "negative": []}
-                        structured_data[current_category]["citations"].extend(current_citations)
-                    
-                    current_category = line.replace("Category:", "").strip()
-                    current_citations = []
-                    continue
-                    
-                # Look for citation patterns like [MM:SS] or specific markers
-                if "[" in line and "]" in line:
-                    citation_context = self._get_timestamp_context(
-                        transcript=self.original_transcript,
-                        timestamp=line,
-                        window=3  # Increased context window
-                    )
-                    if citation_context:
-                        # Determine if this is a positive or negative example
-                        sentiment = "positive" if "✓" in line or "+" in line else "negative"
-                        citation_context["sentiment"] = sentiment
-                        citation_context["analysis"] = lines[i+1].strip() if i+1 < len(lines) else ""
-                        current_citations.append(citation_context)
-            
-            # Handle the last category
-            if current_category and current_citations:
-                if current_category not in structured_data:
-                    structured_data[current_category] = {"citations": [], "positive": [], "negative": []}
-                structured_data[current_category]["citations"].extend(current_citations)
-            
-            return structured_data
+            return default_structure
         except Exception as e:
             logger.error(f"Error extracting structured data: {e}")
             return default_structure
 
     def _create_analysis_prompt(self, transcript: str) -> str:
-        """Modified to request more specific citation formatting"""
-        prompt = """Analyze this teaching session transcript and identify specific examples of teaching effectiveness. 
-        For each category, provide detailed citations with timestamps [MM:SS] and indicate whether each example demonstrates 
-        effective (✓) or ineffective (-) teaching. Include a brief explanation for each citation.
+        """Create the analysis prompt with stricter evaluation criteria"""
+        # First try to extract existing timestamps
+        timestamps = re.findall(r'\[(\d{2}:\d{2})\]', transcript)
         
-        Format your response as follows:
-        
-        Category: [Teaching aspect]
-        [MM:SS] ✓/- Specific quote
-        Brief explanation of why this demonstrates effective or ineffective teaching
-        
-        Categories to analyze:
-        - Clear Communication
-        - Student Engagement
-        - Content Organization
-        - Teaching Techniques
-        - Response to Questions
-        - Pace and Time Management
-        
-        Ensure each citation includes surrounding context and specific teaching moments."""
-        
-        return prompt + "\n\nTranscript:\n" + transcript
+        if timestamps:
+            timestamp_instruction = f"""Use the EXACT timestamps from the transcript (e.g. {', '.join(timestamps[:3])}).
+Do not create new timestamps."""
+        else:
+            # Calculate approximate timestamps based on word position
+            timestamp_instruction = """Generate timestamps based on word position:
+1. Count words from start of transcript
+2. Calculate time: (word_count / 150) minutes
+3. Format as [MM:SS]"""
+
+        prompt_template = """Analyze this teaching content with balanced standards. Each criterion should be evaluated fairly, avoiding both excessive strictness and leniency.
+
+Score 1 if MOST key requirements are met with clear evidence. Score 0 if MULTIPLE significant requirements are not met.
+You MUST provide specific citations with timestamps [MM:SS] for each assessment point.
+
+Transcript:
+{transcript}
+
+Timestamp Instructions:
+{timestamp_instruction}
+
+Required JSON response format:
+{{
+    "Concept Assessment": {{
+        "Subject Matter Accuracy": {{
+            "Score": 0 or 1,
+            "Citations": ["[MM:SS] Exact quote showing evidence"]
+        }},
+        "First Principles Approach": {{
+            "Score": 0 or 1,
+            "Citations": ["[MM:SS] Exact quote showing evidence"]
+        }},
+        "Examples and Business Context": {{
+            "Score": 0 or 1,
+            "Citations": ["[MM:SS] Exact quote showing evidence"]
+        }},
+        "Cohesive Storytelling": {{
+            "Score": 0 or 1,
+            "Citations": ["[MM:SS] Exact quote showing evidence"]
+        }},
+        "Engagement and Interaction": {{
+            "Score": 0 or 1,
+            "Citations": ["[MM:SS] Exact quote showing evidence"],
+            "QuestionConfidence": {{
+                "Score": 0 or 1,
+                "Citations": ["[MM:SS] Exact quote showing evidence of question handling"]
+            }}
+        }},
+        "Professional Tone": {{
+            "Score": 0 or 1,
+            "Citations": ["[MM:SS] Exact quote showing evidence"]
+        }},
+        "Question Handling": {{
+            "Score": 0 or 1,
+            "Citations": ["[MM:SS] Exact quote showing evidence of question handling"],
+            "Details": {{
+                "ResponseAccuracy": {{
+                    "Score": 0 or 1,
+                    "Citations": ["[MM:SS] Exact quote showing evidence of response accuracy"]
+                }},
+                "ResponseCompleteness": {{
+                    "Score": 0 or 1,
+                    "Citations": ["[MM:SS] Exact quote showing evidence of response completeness"]
+                }},
+                "ConfidenceLevel": {{
+                    "Score": 0 or 1,
+                    "Citations": ["[MM:SS] Exact quote showing evidence of confidence level"]
+                }}
+            }}
+        }}
+    }},
+    "Code Assessment": {{
+        "Depth of Explanation": {{
+            "Score": 0 or 1,
+            "Citations": ["[MM:SS] Exact quote showing evidence"]
+        }},
+        "Output Interpretation": {{
+            "Score": 0 or 1,
+            "Citations": ["[MM:SS] Exact quote showing evidence"]
+        }},
+        "Breaking down Complexity": {{
+            "Score": 0 or 1,
+            "Citations": ["[MM:SS] Exact quote showing evidence"]
+        }}
+    }}
+}}
+
+Balanced Scoring Criteria:
+
+Subject Matter Accuracy:
+✓ Score 1 if MOST:
+- Shows good technical knowledge
+- Uses appropriate terminology
+- Explains concepts correctly
+✗ Score 0 if MULTIPLE:
+- Contains significant technical errors
+- Uses consistently incorrect terminology
+- Misrepresents core concepts
+
+First Principles Approach:
+✓ Score 1 if MOST:
+- Introduces fundamental concepts
+- Shows logical progression
+- Connects related concepts
+✗ Score 0 if MULTIPLE:
+- Skips essential fundamentals
+- Shows unclear progression
+- Fails to connect concepts
+
+Examples and Business Context:
+✓ Score 1 if MOST:
+- Provides relevant examples
+- Shows business application
+- Demonstrates practical value
+✗ Score 0 if MULTIPLE:
+- Lacks meaningful examples
+- Missing practical context
+- Examples don't aid learning
+
+Cohesive Storytelling:
+✓ Score 1 if MOST:
+- Shows clear structure
+- Has logical transitions
+- Maintains consistent theme
+✗ Score 0 if MULTIPLE:
+- Has unclear structure
+- Shows jarring transitions
+- Lacks coherent theme
+
+Engagement and Interaction:
+✓ Score 1 if MOST:
+- Shows good audience interaction
+- Encourages participation
+- Answers questions confidently and accurately
+- Maintains engagement throughout
+✗ Score 0 if MULTIPLE:
+- Limited interaction
+- Ignores audience
+- Shows uncertainty in answers
+- Fails to maintain engagement
+
+Question Confidence Scoring:
+✓ Score 1 if MOST:
+- Provides clear, direct answers
+- Shows deep understanding
+- Handles follow-ups well
+- Maintains composure
+✗ Score 0 if MULTIPLE:
+- Shows uncertainty
+- Provides unclear answers
+- Struggles with follow-ups
+- Shows nervousness
+
+Professional Tone:
+✓ Score 1 if MOST:
+- Uses appropriate language
+- Shows confidence
+- Maintains clarity
+✗ Score 0 if MULTIPLE:
+- Uses inappropriate language
+- Shows consistent uncertainty
+- Is frequently unclear
+
+Depth of Explanation:
+✓ Score 1 if MOST:
+- Explains core concepts
+- Covers key details
+- Discusses implementation
+✗ Score 0 if MULTIPLE:
+- Misses core concepts
+- Skips important details
+- Lacks implementation depth
+
+Output Interpretation:
+✓ Score 1 if MOST:
+- Explains key results
+- Covers common errors
+- Discusses performance
+✗ Score 0 if MULTIPLE:
+- Unclear about results
+- Ignores error cases
+- Misses performance aspects
+
+Breaking down Complexity:
+✓ Score 1 if MOST:
+- Breaks down concepts
+- Shows clear steps
+- Builds understanding
+✗ Score 0 if MULTIPLE:
+- Keeps concepts too complex
+- Skips important steps
+- Creates confusion
+
+Important:
+- Each citation must include timestamp and relevant quote
+- Score 1 requires meeting MOST (not all) criteria
+- Score 0 requires MULTIPLE significant issues
+- Use specific evidence from transcript
+- Balance between being overly strict and too lenient
+
+Question Handling Assessment Criteria (ALL must be met for score of 1):
+
+1. Response Accuracy (Must meet ALL):
+   - Technical information must be 100% accurate
+   - All factual statements must be verifiable
+   - No misleading or ambiguous information
+   - Citations must show clear evidence of accurate responses
+
+2. Response Completeness (Must meet ALL):
+   - Must address ALL parts of each question
+   - Must provide necessary context
+   - Must include relevant examples where appropriate
+   - No partial or incomplete answers accepted
+
+3. Confidence Level (Must meet ALL):
+   - Clear, authoritative delivery
+   - No hesitation or uncertainty in responses
+   - Confident handling of follow-up questions
+   - Maintains professional tone throughout
+
+4. Response Time:
+   - Must respond within 3-5 seconds of question
+   - Longer response times must be justified by question complexity
+   - Must acknowledge question immediately even if full response needs time
+
+5. Clarification Skills (Must meet ALL):
+   - Asks probing questions when needed
+   - Confirms understanding before answering
+   - Reframes complex questions effectively
+   - Ensures question intent is fully understood
+
+Score 0 if ANY of the following are present:
+- Any technical inaccuracy
+- Incomplete or partial answers
+- Excessive hesitation or uncertainty
+- Failure to ask clarifying questions when needed
+- Missing examples or context
+- Delayed responses without justification
+"""
+
+        return prompt_template.format(
+            transcript=transcript,
+            timestamp_instruction=timestamp_instruction
+        )
 
     def _evaluate_speech_metrics(self, transcript: str, audio_features: Dict[str, float], 
                            progress_callback=None) -> Dict[str, Any]:
@@ -771,33 +949,28 @@ class ContentAnalyzer:
             logger.error(f"Error in speech metrics evaluation: {e}")
             raise
 
-    def generate_suggestions(self, category: str, citations: List[str]) -> List[str]:
-        """Generate contextual suggestions based on category and citations"""
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": """You are a teaching expert providing specific, actionable suggestions 
-                    for improvement. Focus on the single most important, practical advice based on the teaching category 
-                    and cited issues. Keep suggestions under 25 words."""},
-                    {"role": "user", "content": f"""
-                    Teaching Category: {category}
-                    Issues identified in citations:
-                    {json.dumps(citations, indent=2)}
-                    
-                    Please provide 2 or 3 at max specific, actionable suggestion for improvement.
-                    Format as a JSON array with a single string."""}
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.7
+    def generate_suggestions(self, category: str, citations: List[Dict[str, Any]]) -> List[str]:
+        """
+        Updated to handle richer citation context
+        """
+        suggestions = []
+        for citation in citations:
+            context = (
+                f"[{citation['timestamp']}] Context: "
+                f"{' '.join(citation['context']['context_before'])} "
+                f"**{citation['context']['focus_sentence']}** "
+                f"{' '.join(citation['context']['context_after'])}"
             )
-            
-            result = json.loads(response.choices[0].message.content)
-            return result.get("suggestions", [])
-            
-        except Exception as e:
-            logger.error(f"Error generating suggestions: {e}")
-            return [f"Unable to generate specific suggestions: {str(e)}"]
+            # Generate suggestion based on the full context
+            suggestion = self._generate_suggestion_with_context(category, context)
+            suggestions.append(suggestion)
+        
+        return suggestions
+
+    def _generate_suggestion_with_context(self, category: str, context: str) -> str:
+        # Implement your logic to generate suggestions based on the context
+        # This is a placeholder and should be replaced with actual implementation
+        return f"Suggested improvement for {category}: {context}"
 
 class RecommendationGenerator:
     """Generates teaching recommendations using OpenAI API"""
