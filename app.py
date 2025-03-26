@@ -1862,20 +1862,28 @@ def display_evaluation(evaluation: Dict[str, Any]):
         with tabs[1]:
             st.header("Teaching Analysis")
             
-            teaching_data = evaluation.get("teaching", {})
+            # Get teaching data from raw API response if available
+            teaching_data = evaluation.get("raw_api_response", {}).get("teaching", {})
+            if not teaching_data:
+                teaching_data = evaluation.get("teaching", {})
+            
             content_analyzer = ContentAnalyzer(st.secrets["OPENAI_API_KEY"])
             
             # Display Concept Assessment with AI-generated suggestions
             with st.expander("📚 Concept Assessment", expanded=True):
+                # Try to get concept data from raw API response first
                 concept_data = teaching_data.get("Concept Assessment", {})
+                
+                # Debug: Print the source of data
+                st.write("Debug - Data Source:", "Raw API" if "raw_api_response" in evaluation else "Processed")
+                st.write("Debug - Raw Teaching Data:", teaching_data)
                 
                 def get_all_citations(details):
                     """Recursively get all citations from nested structure"""
                     citations = []
                     if isinstance(details, dict):
                         # Get direct citations
-                        if "Citations" in details:
-                            citations.extend(details["Citations"])
+                        citations.extend(details.get("Citations", []))
                         # Get citations from QuestionConfidence
                         if "QuestionConfidence" in details:
                             citations.extend(details["QuestionConfidence"].get("Citations", []))
@@ -1884,14 +1892,20 @@ def display_evaluation(evaluation: Dict[str, Any]):
                             for detail in details["Details"].values():
                                 citations.extend(detail.get("Citations", []))
                         # Recursively check all dictionary values
-                        for value in details.values():
-                            if isinstance(value, dict):
+                        for key, value in details.items():
+                            if isinstance(value, dict) and key not in ["QuestionConfidence", "Details"]:
                                 citations.extend(get_all_citations(value))
                     return citations
                 
                 for category, details in concept_data.items():
+                    # Debug: Print raw category data
+                    st.write(f"Debug - Raw {category} data:", details)
+                    
                     score = details.get("Score", 0)
                     all_citations = get_all_citations(details)
+                    
+                    # Debug: Print found citations
+                    st.write(f"Debug - Found citations for {category}:", all_citations)
                     
                     # Display category header
                     st.markdown(f"""
