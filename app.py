@@ -307,11 +307,13 @@ class ContentAnalyzer:
     """Analyzes teaching content using OpenAI API"""
     def __init__(self, api_key: str):
         self.client = OpenAI(api_key=api_key)
+        self.original_transcript = ""  # Add this line
         self.retry_count = 3
         self.retry_delay = 1
         
     def analyze_content(self, transcript: str, progress_callback=None) -> Dict[str, Any]:
         """Analyze teaching content with strict validation and robust JSON handling"""
+        self.original_transcript = transcript  # Store the transcript
         default_structure = {
             "Concept Assessment": {
                 "Subject Matter Accuracy": {
@@ -489,6 +491,35 @@ class ContentAnalyzer:
         seconds = (words % 150) * 60 // 150
         return f"{minutes:02d}:{seconds:02d}"
 
+    def _get_timestamp_context(self, transcript: str, index: int, window: int = 2) -> Dict[str, Any]:
+        """Get timestamp and surrounding context for a given position in transcript.
+        
+        Args:
+            transcript: The full transcript text
+            index: The position of the target sentence
+            window: Number of sentences before and after for context
+        """
+        # Split transcript into sentences (assuming transcript has timestamps)
+        sentences = transcript.split('\n')
+        
+        # Find the timestamp line
+        timestamp = ""
+        for i in range(max(0, index - 1), min(len(sentences), index + 2)):
+            if match := re.search(r'\[(\d{2}:\d{2})\]', sentences[i]):
+                timestamp = match.group(1)
+                break
+        
+        # Get surrounding context
+        start_idx = max(0, index - window)
+        end_idx = min(len(sentences), index + window + 1)
+        context = sentences[start_idx:end_idx]
+        
+        return {
+            "timestamp": timestamp,
+            "context": " ".join(context).strip(),
+            "focal_point": sentences[index].strip()
+        }
+
     def _extract_structured_data(self, text: str) -> Dict[str, Any]:
         """Extract structured data from text response when JSON parsing fails"""
         default_structure = {
@@ -529,7 +560,48 @@ class ContentAnalyzer:
                             "Citations": citations
                         }
             
-            return default_structure
+            structured_data = {}
+            current_category = None
+            
+            for line in text.split('\n'):
+                if "Concept Assessment" in line:
+                    current_category = "Concept Assessment"
+                elif "Code Assessment" in line:
+                    current_category = "Code Assessment"
+                elif current_category and ':' in line:
+                    title, content = line.split(':', 1)
+                    current_subcategory = title.strip()
+                    
+                    # Extract score (assuming 0 or 1 is mentioned)
+                    score = 1 if "pass" in content.lower() or "score: 1" in content.lower() else 0
+                    
+                    # Extract citations (assuming they're in [MM:SS] format)
+                    citations = re.findall(r'\[\d{2}:\d{2}\].*?(?=\[|$)', content)
+                    citations = [c.strip() for c in citations if c.strip()]
+                    
+                    if not citations:
+                        citations = ["No specific citations found"]
+                    
+                    if current_category and current_subcategory:
+                        if current_category not in structured_data:
+                            structured_data[current_category] = {}
+                        structured_data[current_category][current_subcategory] = {
+                            "Score": score,
+                            "Citations": citations
+                        }
+            
+            # When adding citations, include context
+            if "citations" in structured_data and current_category:
+                citations_with_context = []
+                for citation_index in structured_data[current_category]["citations"]:
+                    context_data = self._get_timestamp_context(
+                        transcript=self.original_transcript,  # Need to store transcript as class variable
+                        index=citation_index
+                    )
+                    citations_with_context.append(context_data)
+                structured_data[current_category]["citations"] = citations_with_context
+            
+            return structured_data
         except Exception as e:
             logger.error(f"Error extracting structured data: {e}")
             return default_structure
