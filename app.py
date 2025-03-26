@@ -27,7 +27,6 @@ import concurrent.futures
 import hashlib
 import threading
 import random
-import nltk
 
 # Set up logging
 logging.basicConfig(
@@ -466,32 +465,6 @@ class ContentAnalyzer:
                                     entry["Score"] = 1 if entry["Score"] == 1 else 0
                                     result[category][subcategory] = entry
                     
-                    # When creating citations, include context
-                    for category in result:
-                        for subcategory in result[category]:
-                            if isinstance(result[category][subcategory], dict):
-                                citations = result[category][subcategory].get("Citations", [])
-                                enhanced_citations = []
-                                
-                                for citation in citations:
-                                    # Extract timestamp and text from citation
-                                    timestamp_match = re.search(r'\[(\d{2}:\d{2})\](.*)', citation)
-                                    if timestamp_match:
-                                        timestamp = timestamp_match.group(1)
-                                        text = timestamp_match.group(2).strip()
-                                        
-                                        # Find this text in transcript and get context
-                                        text_start = transcript.find(text)
-                                        if text_start >= 0:
-                                            context = self._get_surrounding_context(
-                                                transcript,
-                                                text_start,
-                                                text_start + len(text)
-                                            )
-                                            enhanced_citations.append(context)
-                                
-                                result[category][subcategory]["Citations"] = enhanced_citations
-                    
                     return result
                     
                 except json.JSONDecodeError as json_error:
@@ -508,82 +481,13 @@ class ContentAnalyzer:
         
         return default_structure
 
-    def _get_timestamp(self, transcript: str) -> Dict[str, Any]:
-        """
-        Enhanced version that returns both timestamp and surrounding context
-        """
+    def _get_timestamp(self, transcript: str) -> str:
+        """Generate a reasonable timestamp based on transcript length"""
         # Calculate approximate time based on word count
         words = len(transcript.split())
         minutes = words // 150  # Assuming 150 words per minute
         seconds = (words % 150) * 60 // 150
-        formatted_time = f"{minutes:02d}:{seconds:02d}"
-        
-        # Find the start and end indices of the timestamp
-        start_idx = transcript.find(formatted_time)
-        end_idx = start_idx + len(formatted_time)
-        
-        return {
-            'timestamp': formatted_time,
-            'context': self._get_surrounding_context(transcript, start_idx, end_idx)
-        }
-
-    def _get_surrounding_context(self, transcript: str, center_start: int, center_end: int, context_sentences: int = 2) -> Dict[str, Any]:
-        """Get surrounding context for a citation with proper sentence boundaries"""
-        try:
-            # Split transcript into sentences while preserving timestamps
-            sentences = nltk.sent_tokenize(transcript)
-            center_sentence_idx = -1
-            
-            # Find the sentence containing our citation
-            cumulative_length = 0
-            for idx, sentence in enumerate(sentences):
-                next_length = cumulative_length + len(sentence)
-                if center_start >= cumulative_length and center_start < next_length:
-                    center_sentence_idx = idx
-                    break
-                cumulative_length = next_length + 1  # +1 for the space between sentences
-            
-            if center_sentence_idx == -1:
-                return {
-                    "context": "",
-                    "context_before": [],
-                    "focus_sentence": "",
-                    "context_after": [],
-                    "timestamp": ""
-                }
-            
-            # Get surrounding context
-            start_idx = max(0, center_sentence_idx - context_sentences)
-            end_idx = min(len(sentences), center_sentence_idx + context_sentences + 1)
-            
-            # Extract timestamp from the focus sentence if present
-            timestamp_match = re.search(r'\[(\d{2}:\d{2})\]', sentences[center_sentence_idx])
-            timestamp = timestamp_match.group(1) if timestamp_match else ""
-            
-            return {
-                "context": " ".join(sentences[start_idx:end_idx]),
-                "context_before": sentences[start_idx:center_sentence_idx],
-                "focus_sentence": sentences[center_sentence_idx],
-                "context_after": sentences[center_sentence_idx + 1:end_idx],
-                "timestamp": timestamp
-            }
-        except Exception as e:
-            logger.error(f"Error getting context: {e}")
-            return {
-                "context": "",
-                "context_before": [],
-                "focus_sentence": "",
-                "context_after": [],
-                "timestamp": ""
-            }
-
-    def _find_timestamp(self, transcript: str, sentence: str) -> str:
-        """
-        Find the timestamp associated with a given sentence
-        """
-        # This would need to be implemented based on how your transcript
-        # format stores timestamp information
-        pass
+        return f"{minutes:02d}:{seconds:02d}"
 
     def _extract_structured_data(self, text: str) -> Dict[str, Any]:
         """Extract structured data from text response when JSON parsing fails"""
@@ -998,28 +902,33 @@ Score 0 if ANY of the following are present:
             logger.error(f"Error in speech metrics evaluation: {e}")
             raise
 
-    def generate_suggestions(self, category: str, citations: List[Dict[str, Any]]) -> List[str]:
-        """
-        Updated to handle richer citation context
-        """
-        suggestions = []
-        for citation in citations:
-            context = (
-                f"[{citation['timestamp']}] Context: "
-                f"{' '.join(citation['context']['context_before'])} "
-                f"**{citation['context']['focus_sentence']}** "
-                f"{' '.join(citation['context']['context_after'])}"
+    def generate_suggestions(self, category: str, citations: List[str]) -> List[str]:
+        """Generate contextual suggestions based on category and citations"""
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": """You are a teaching expert providing specific, actionable suggestions 
+                    for improvement. Focus on the single most important, practical advice based on the teaching category 
+                    and cited issues. Keep suggestions under 25 words."""},
+                    {"role": "user", "content": f"""
+                    Teaching Category: {category}
+                    Issues identified in citations:
+                    {json.dumps(citations, indent=2)}
+                    
+                    Please provide 2 or 3 at max specific, actionable suggestion for improvement.
+                    Format as a JSON array with a single string."""}
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.7
             )
-            # Generate suggestion based on the full context
-            suggestion = self._generate_suggestion_with_context(category, context)
-            suggestions.append(suggestion)
-        
-        return suggestions
-
-    def _generate_suggestion_with_context(self, category: str, context: str) -> str:
-        # Implement your logic to generate suggestions based on the context
-        # This is a placeholder and should be replaced with actual implementation
-        return f"Suggested improvement for {category}: {context}"
+            
+            result = json.loads(response.choices[0].message.content)
+            return result.get("suggestions", [])
+            
+        except Exception as e:
+            logger.error(f"Error generating suggestions: {e}")
+            return [f"Unable to generate specific suggestions: {str(e)}"]
 
 class RecommendationGenerator:
     """Generates teaching recommendations using OpenAI API"""
@@ -1862,52 +1771,23 @@ def display_evaluation(evaluation: Dict[str, Any]):
         with tabs[1]:
             st.header("Teaching Analysis")
             
-            # Get teaching data from raw API response if available
-            teaching_data = evaluation.get("raw_api_response", {}).get("teaching", {})
-            if not teaching_data:
-                teaching_data = evaluation.get("teaching", {})
-            
+            teaching_data = evaluation.get("teaching", {})
             content_analyzer = ContentAnalyzer(st.secrets["OPENAI_API_KEY"])
             
             # Display Concept Assessment with AI-generated suggestions
             with st.expander("📚 Concept Assessment", expanded=True):
-                # Try to get concept data from raw API response first
                 concept_data = teaching_data.get("Concept Assessment", {})
                 
-                # Debug: Print the source of data
-                st.write("Debug - Data Source:", "Raw API" if "raw_api_response" in evaluation else "Processed")
-                st.write("Debug - Raw Teaching Data:", teaching_data)
-                
-                def get_all_citations(details):
-                    """Recursively get all citations from nested structure"""
-                    citations = []
-                    if isinstance(details, dict):
-                        # Get direct citations
-                        citations.extend(details.get("Citations", []))
-                        # Get citations from QuestionConfidence
-                        if "QuestionConfidence" in details:
-                            citations.extend(details["QuestionConfidence"].get("Citations", []))
-                        # Get citations from Details
-                        if "Details" in details:
-                            for detail in details["Details"].values():
-                                citations.extend(detail.get("Citations", []))
-                        # Recursively check all dictionary values
-                        for key, value in details.items():
-                            if isinstance(value, dict) and key not in ["QuestionConfidence", "Details"]:
-                                citations.extend(get_all_citations(value))
-                    return citations
-                
                 for category, details in concept_data.items():
-                    # Debug: Print raw category data
-                    st.write(f"Debug - Raw {category} data:", details)
-                    
                     score = details.get("Score", 0)
-                    all_citations = get_all_citations(details)
+                    citations = details.get("Citations", [])
                     
-                    # Debug: Print found citations
-                    st.write(f"Debug - Found citations for {category}:", all_citations)
+                    # Get AI-generated suggestions if score is 0
+                    suggestions = []
+                    if score == 0:
+                        suggestions = content_analyzer.generate_suggestions(category, citations)
                     
-                    # Display category header
+                    # Create suggestions based on score and category
                     st.markdown(f"""
                         <div class="teaching-card">
                             <div class="teaching-header">
@@ -1916,76 +1796,34 @@ def display_evaluation(evaluation: Dict[str, Any]):
                                     {'✅ Pass' if score == 1 else '❌ Needs Work'}
                                 </span>
                             </div>
-                        </div>
+                            <div class="citations-container">
                     """, unsafe_allow_html=True)
                     
                     # Display citations
-                    if all_citations:
-                        st.markdown("<div class='citations-container'>", unsafe_allow_html=True)
-                        for citation in all_citations:
-                            if isinstance(citation, str):
-                                # Extract timestamp and text using a more flexible regex
-                                match = re.match(r'\[(.*?)\]\s*[\'"]?(.*?)[\'"]?$', citation)
-                                if match:
-                                    timestamp, text = match.groups()
-                                    st.markdown(f"""
-                                        <div class="citation-box">
-                                            <div class="citation-timestamp">[{timestamp}]</div>
-                                            <div class="citation-text">{text}</div>
-                                        </div>
-                                    """, unsafe_allow_html=True)
-                                else:
-                                    # Fallback for citations that don't match the expected format
-                                    st.markdown(f"""
-                                        <div class="citation-box">
-                                            <div class="citation-text">{citation}</div>
-                                        </div>
-                                    """, unsafe_allow_html=True)
-                        st.markdown("</div>", unsafe_allow_html=True)
-                        
-                        # Add a visual separator after citations
-                        st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
-                    else:
-                        st.write("No citations available for this category.")
-
-            # Update the CSS for better citation display
-            st.markdown("""
-                <style>
-                .citations-container {
-                    margin: 10px 0;
-                }
-                
-                .citation-box {
-                    background: #f8f9fa;
-                    border-left: 3px solid #1f77b4;
-                    padding: 15px;
-                    margin: 10px 0;
-                    border-radius: 4px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                }
-                
-                .citation-timestamp {
-                    color: #666;
-                    font-size: 0.9em;
-                    margin-bottom: 5px;
-                    font-weight: bold;
-                }
-                
-                .citation-text {
-                    color: #1f77b4;
-                    font-style: italic;
-                    margin-left: 10px;
-                    line-height: 1.4;
-                }
-                
-                hr {
-                    border: none;
-                    height: 1px;
-                    background: #e0e0e0;
-                }
-                </style>
-            """, unsafe_allow_html=True)
-
+                    for citation in citations:
+                        st.markdown(f"""
+                            <div class="citation-box">
+                                <i class="citation-text">{citation}</i>
+                            </div>
+                        """, unsafe_allow_html=True)
+                    
+                    # Display AI-generated suggestions if score is 0
+                    if score == 0 and suggestions:
+                        st.markdown("""
+                            <div class="suggestions-box">
+                                <h4>🎯 Suggestions for Improvement:</h4>
+                            </div>
+                        """, unsafe_allow_html=True)
+                        for suggestion in suggestions:
+                            st.markdown(f"""
+                                <div class="suggestion-item">
+                                    • {suggestion}
+                                </div>
+                            """, unsafe_allow_html=True)
+                    
+                    st.markdown("</div></div>", unsafe_allow_html=True)
+                    st.markdown("---")
+            
             # Display Code Assessment with AI-generated suggestions
             with st.expander("💻 Code Assessment", expanded=True):
                 code_data = teaching_data.get("Code Assessment", {})
@@ -2094,30 +1932,6 @@ def display_evaluation(evaluation: Dict[str, Any]):
                                 """, unsafe_allow_html=True)
                     
                     st.markdown("</div></div>", unsafe_allow_html=True)
-
-            # In the teaching tab section
-            with st.expander("🎓 Teaching Style Analysis", expanded=True):
-                if "teaching_citations" in evaluation:
-                    st.subheader("Teaching Style Observations")
-                    for citation in evaluation["teaching_citations"]:
-                        with st.container():
-                            # Display context before the citation
-                            if "before" in citation and citation["before"]:
-                                st.caption("Context before:")
-                                for sentence in citation["before"]:
-                                    st.write(sentence)
-                            
-                            # Display the main citation with timestamp
-                            st.markdown(f"**[{citation.get('timestamp', 'N/A')}] Focus point:**")
-                            st.info(citation.get("focus_sentence", ""))
-                            
-                            # Display context after the citation
-                            if "after" in citation and citation["after"]:
-                                st.caption("Context after:")
-                                for sentence in citation["after"]:
-                                    st.write(sentence)
-                            
-                            st.divider()  # Add visual separator between citations
 
         with tabs[2]:
             st.header("Recommendations")
@@ -3270,3 +3084,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
