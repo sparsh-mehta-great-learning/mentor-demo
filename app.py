@@ -1924,8 +1924,8 @@ def display_evaluation(evaluation: Dict[str, Any]):
                         st.markdown("<div class='citations-container'>", unsafe_allow_html=True)
                         for citation in all_citations:
                             if isinstance(citation, str):
-                                # Extract timestamp and text from citation string
-                                match = re.match(r'\[(.*?)\]\s*\'(.*)\'', citation)
+                                # Extract timestamp and text using a more flexible regex
+                                match = re.match(r'\[(.*?)\]\s*[\'"]?(.*?)[\'"]?$', citation)
                                 if match:
                                     timestamp, text = match.groups()
                                     st.markdown(f"""
@@ -1935,39 +1935,53 @@ def display_evaluation(evaluation: Dict[str, Any]):
                                         </div>
                                     """, unsafe_allow_html=True)
                                 else:
-                                    st.info(citation)
-                            elif isinstance(citation, dict):
-                                st.markdown(f"""
-                                    <div class="citation-box">
-                                        <div class="citation-timestamp">[{citation.get('timestamp', 'N/A')}]</div>
-                                        <div class="citation-text">{citation.get('text', '')}</div>
-                                    </div>
-                                """, unsafe_allow_html=True)
+                                    # Fallback for citations that don't match the expected format
+                                    st.markdown(f"""
+                                        <div class="citation-box">
+                                            <div class="citation-text">{citation}</div>
+                                        </div>
+                                    """, unsafe_allow_html=True)
                         st.markdown("</div>", unsafe_allow_html=True)
+                        
+                        # Add a visual separator after citations
+                        st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
                     else:
                         st.write("No citations available for this category.")
 
-            # Add this CSS to improve citation display
+            # Update the CSS for better citation display
             st.markdown("""
                 <style>
+                .citations-container {
+                    margin: 10px 0;
+                }
+                
                 .citation-box {
                     background: #f8f9fa;
                     border-left: 3px solid #1f77b4;
                     padding: 15px;
                     margin: 10px 0;
                     border-radius: 4px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
                 }
                 
                 .citation-timestamp {
                     color: #666;
                     font-size: 0.9em;
                     margin-bottom: 5px;
+                    font-weight: bold;
                 }
                 
                 .citation-text {
                     color: #1f77b4;
                     font-style: italic;
                     margin-left: 10px;
+                    line-height: 1.4;
+                }
+                
+                hr {
+                    border: none;
+                    height: 1px;
+                    background: #e0e0e0;
                 }
                 </style>
             """, unsafe_allow_html=True)
