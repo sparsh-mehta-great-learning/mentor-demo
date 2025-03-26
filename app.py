@@ -1862,9 +1862,6 @@ def display_evaluation(evaluation: Dict[str, Any]):
         with tabs[1]:
             st.header("Teaching Analysis")
             
-            # Debug: Print the teaching data structure
-            st.write("Debug - Teaching Data Structure:", evaluation.get("teaching", {}))
-            
             teaching_data = evaluation.get("teaching", {})
             content_analyzer = ContentAnalyzer(st.secrets["OPENAI_API_KEY"])
             
@@ -1872,39 +1869,29 @@ def display_evaluation(evaluation: Dict[str, Any]):
             with st.expander("📚 Concept Assessment", expanded=True):
                 concept_data = teaching_data.get("Concept Assessment", {})
                 
-                # Debug: Print concept data
-                st.write("Debug - Concept Data:", concept_data)
+                def get_all_citations(details):
+                    """Recursively get all citations from nested structure"""
+                    citations = []
+                    if isinstance(details, dict):
+                        # Get direct citations
+                        if "Citations" in details:
+                            citations.extend(details["Citations"])
+                        # Get citations from QuestionConfidence
+                        if "QuestionConfidence" in details:
+                            citations.extend(details["QuestionConfidence"].get("Citations", []))
+                        # Get citations from Details
+                        if "Details" in details:
+                            for detail in details["Details"].values():
+                                citations.extend(detail.get("Citations", []))
+                        # Recursively check all dictionary values
+                        for value in details.values():
+                            if isinstance(value, dict):
+                                citations.extend(get_all_citations(value))
+                    return citations
                 
                 for category, details in concept_data.items():
-                    # Debug: Print category and details
-                    st.write(f"Debug - Category: {category}")
-                    st.write(f"Debug - Details: {details}")
-                    
                     score = details.get("Score", 0)
-                    citations = details.get("Citations", [])
-                    
-                    # Debug: Print raw citations
-                    st.write(f"Debug - Raw Citations for {category}:", citations)
-                    
-                    # Convert citations to proper format
-                    formatted_citations = []
-                    for citation in citations:
-                        if isinstance(citation, dict):
-                            formatted_citations.append(citation)
-                        elif isinstance(citation, str):
-                            # Handle string citations
-                            formatted_citations.append({
-                                "timestamp": "N/A",
-                                "text": citation,  # Store original text
-                                "context": {
-                                    "context_before": [],
-                                    "focus_sentence": citation,
-                                    "context_after": []
-                                }
-                            })
-                        
-                    # Debug: Print formatted citations
-                    st.write(f"Debug - Formatted Citations for {category}:", formatted_citations)
+                    all_citations = get_all_citations(details)
                     
                     # Display category header
                     st.markdown(f"""
@@ -1919,34 +1906,57 @@ def display_evaluation(evaluation: Dict[str, Any]):
                     """, unsafe_allow_html=True)
                     
                     # Display citations
-                    if formatted_citations:
+                    if all_citations:
                         st.markdown("<div class='citations-container'>", unsafe_allow_html=True)
-                        for citation in formatted_citations:
-                            st.markdown("""
-                                <div class="citation-box">
-                            """, unsafe_allow_html=True)
-                            
-                            # Display timestamp if available
-                            timestamp = citation.get("timestamp", "N/A")
-                            st.markdown(f"<div class='citation-timestamp'>[{timestamp}]</div>", unsafe_allow_html=True)
-                            
-                            # Display the citation text/context
-                            if "text" in citation:
-                                # Direct text display for simple citations
-                                st.info(citation["text"])
-                            elif "context" in citation:
-                                # Display full context if available
-                                context = citation["context"]
-                                for sentence in context.get("context_before", []):
-                                    st.write(sentence)
-                                st.info(context.get("focus_sentence", ""))
-                                for sentence in context.get("context_after", []):
-                                    st.write(sentence)
-                            
-                            st.markdown("</div>", unsafe_allow_html=True)
+                        for citation in all_citations:
+                            if isinstance(citation, str):
+                                # Extract timestamp and text from citation string
+                                match = re.match(r'\[(.*?)\]\s*\'(.*)\'', citation)
+                                if match:
+                                    timestamp, text = match.groups()
+                                    st.markdown(f"""
+                                        <div class="citation-box">
+                                            <div class="citation-timestamp">[{timestamp}]</div>
+                                            <div class="citation-text">{text}</div>
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                                else:
+                                    st.info(citation)
+                            elif isinstance(citation, dict):
+                                st.markdown(f"""
+                                    <div class="citation-box">
+                                        <div class="citation-timestamp">[{citation.get('timestamp', 'N/A')}]</div>
+                                        <div class="citation-text">{citation.get('text', '')}</div>
+                                    </div>
+                                """, unsafe_allow_html=True)
                         st.markdown("</div>", unsafe_allow_html=True)
                     else:
                         st.write("No citations available for this category.")
+
+            # Add this CSS to improve citation display
+            st.markdown("""
+                <style>
+                .citation-box {
+                    background: #f8f9fa;
+                    border-left: 3px solid #1f77b4;
+                    padding: 15px;
+                    margin: 10px 0;
+                    border-radius: 4px;
+                }
+                
+                .citation-timestamp {
+                    color: #666;
+                    font-size: 0.9em;
+                    margin-bottom: 5px;
+                }
+                
+                .citation-text {
+                    color: #1f77b4;
+                    font-style: italic;
+                    margin-left: 10px;
+                }
+                </style>
+            """, unsafe_allow_html=True)
 
             # Display Code Assessment with AI-generated suggestions
             with st.expander("💻 Code Assessment", expanded=True):
