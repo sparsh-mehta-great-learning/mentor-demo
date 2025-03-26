@@ -1862,6 +1862,9 @@ def display_evaluation(evaluation: Dict[str, Any]):
         with tabs[1]:
             st.header("Teaching Analysis")
             
+            # Debug: Print the teaching data structure
+            st.write("Debug - Teaching Data Structure:", evaluation.get("teaching", {}))
+            
             teaching_data = evaluation.get("teaching", {})
             content_analyzer = ContentAnalyzer(st.secrets["OPENAI_API_KEY"])
             
@@ -1869,32 +1872,41 @@ def display_evaluation(evaluation: Dict[str, Any]):
             with st.expander("📚 Concept Assessment", expanded=True):
                 concept_data = teaching_data.get("Concept Assessment", {})
                 
+                # Debug: Print concept data
+                st.write("Debug - Concept Data:", concept_data)
+                
                 for category, details in concept_data.items():
+                    # Debug: Print category and details
+                    st.write(f"Debug - Category: {category}")
+                    st.write(f"Debug - Details: {details}")
+                    
                     score = details.get("Score", 0)
                     citations = details.get("Citations", [])
                     
-                    # Convert citations to proper format if they're not already dictionaries
+                    # Debug: Print raw citations
+                    st.write(f"Debug - Raw Citations for {category}:", citations)
+                    
+                    # Convert citations to proper format
                     formatted_citations = []
                     for citation in citations:
                         if isinstance(citation, dict):
                             formatted_citations.append(citation)
-                        else:
-                            # Create a simple citation dictionary if it's just a string
+                        elif isinstance(citation, str):
+                            # Handle string citations
                             formatted_citations.append({
                                 "timestamp": "N/A",
+                                "text": citation,  # Store original text
                                 "context": {
                                     "context_before": [],
-                                    "focus_sentence": str(citation),
+                                    "focus_sentence": citation,
                                     "context_after": []
                                 }
                             })
+                        
+                    # Debug: Print formatted citations
+                    st.write(f"Debug - Formatted Citations for {category}:", formatted_citations)
                     
-                    # Get AI-generated suggestions if score is 0
-                    suggestions = []
-                    if score == 0:
-                        suggestions = content_analyzer.generate_suggestions(category, formatted_citations)
-                    
-                    # Create suggestions based on score and category
+                    # Display category header
                     st.markdown(f"""
                         <div class="teaching-card">
                             <div class="teaching-header">
@@ -1903,32 +1915,38 @@ def display_evaluation(evaluation: Dict[str, Any]):
                                     {'✅ Pass' if score == 1 else '❌ Needs Work'}
                                 </span>
                             </div>
-                            <div class="citations-container">
+                        </div>
                     """, unsafe_allow_html=True)
                     
-                    # Display citations with full context
-                    for citation in formatted_citations:
-                        st.markdown(f"""
-                            <div class="citation-box">
-                                <div class="citation-timestamp">[{citation.get('timestamp', 'N/A')}]</div>
-                                <div class="citation-context">
-                        """, unsafe_allow_html=True)
-                        
-                        # Display context before
-                        if "context" in citation and "context_before" in citation["context"]:
-                            for sentence in citation["context"]["context_before"]:
-                                st.write(sentence)
-                        
-                        # Display focus sentence
-                        if "context" in citation and "focus_sentence" in citation["context"]:
-                            st.info(citation["context"]["focus_sentence"])
-                        
-                        # Display context after
-                        if "context" in citation and "context_after" in citation["context"]:
-                            for sentence in citation["context"]["context_after"]:
-                                st.write(sentence)
-                        
-                        st.markdown("</div></div>", unsafe_allow_html=True)
+                    # Display citations
+                    if formatted_citations:
+                        st.markdown("<div class='citations-container'>", unsafe_allow_html=True)
+                        for citation in formatted_citations:
+                            st.markdown("""
+                                <div class="citation-box">
+                            """, unsafe_allow_html=True)
+                            
+                            # Display timestamp if available
+                            timestamp = citation.get("timestamp", "N/A")
+                            st.markdown(f"<div class='citation-timestamp'>[{timestamp}]</div>", unsafe_allow_html=True)
+                            
+                            # Display the citation text/context
+                            if "text" in citation:
+                                # Direct text display for simple citations
+                                st.info(citation["text"])
+                            elif "context" in citation:
+                                # Display full context if available
+                                context = citation["context"]
+                                for sentence in context.get("context_before", []):
+                                    st.write(sentence)
+                                st.info(context.get("focus_sentence", ""))
+                                for sentence in context.get("context_after", []):
+                                    st.write(sentence)
+                            
+                            st.markdown("</div>", unsafe_allow_html=True)
+                        st.markdown("</div>", unsafe_allow_html=True)
+                    else:
+                        st.write("No citations available for this category.")
 
             # Display Code Assessment with AI-generated suggestions
             with st.expander("💻 Code Assessment", expanded=True):
