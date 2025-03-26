@@ -466,6 +466,32 @@ class ContentAnalyzer:
                                     entry["Score"] = 1 if entry["Score"] == 1 else 0
                                     result[category][subcategory] = entry
                     
+                    # When creating citations, include context
+                    for category in result:
+                        for subcategory in result[category]:
+                            if isinstance(result[category][subcategory], dict):
+                                citations = result[category][subcategory].get("Citations", [])
+                                enhanced_citations = []
+                                
+                                for citation in citations:
+                                    # Extract timestamp and text from citation
+                                    timestamp_match = re.search(r'\[(\d{2}:\d{2})\](.*)', citation)
+                                    if timestamp_match:
+                                        timestamp = timestamp_match.group(1)
+                                        text = timestamp_match.group(2).strip()
+                                        
+                                        # Find this text in transcript and get context
+                                        text_start = transcript.find(text)
+                                        if text_start >= 0:
+                                            context = self._get_surrounding_context(
+                                                transcript,
+                                                text_start,
+                                                text_start + len(text)
+                                            )
+                                            enhanced_citations.append(context)
+                                
+                                result[category][subcategory]["Citations"] = enhanced_citations
+                    
                     return result
                     
                 except json.JSONDecodeError as json_error:
@@ -502,37 +528,54 @@ class ContentAnalyzer:
         }
 
     def _get_surrounding_context(self, transcript: str, center_start: int, center_end: int, context_sentences: int = 2) -> Dict[str, Any]:
-        # ... existing code ...
-        
-        # Create a window of sentences before and after the citation
-        sentences = nltk.sent_tokenize(transcript)
-        center_sentence_idx = -1
-        
-        # Find the sentence containing our citation
-        for idx, sentence in enumerate(sentences):
-            if center_start >= len(''.join(sentences[:idx])) and center_start < len(''.join(sentences[:idx+1])):
-                center_sentence_idx = idx
-                break
-        
-        if center_sentence_idx == -1:
+        """Get surrounding context for a citation with proper sentence boundaries"""
+        try:
+            # Split transcript into sentences while preserving timestamps
+            sentences = nltk.sent_tokenize(transcript)
+            center_sentence_idx = -1
+            
+            # Find the sentence containing our citation
+            cumulative_length = 0
+            for idx, sentence in enumerate(sentences):
+                next_length = cumulative_length + len(sentence)
+                if center_start >= cumulative_length and center_start < next_length:
+                    center_sentence_idx = idx
+                    break
+                cumulative_length = next_length + 1  # +1 for the space between sentences
+            
+            if center_sentence_idx == -1:
+                return {
+                    "context": "",
+                    "context_before": [],
+                    "focus_sentence": "",
+                    "context_after": [],
+                    "timestamp": ""
+                }
+            
+            # Get surrounding context
+            start_idx = max(0, center_sentence_idx - context_sentences)
+            end_idx = min(len(sentences), center_sentence_idx + context_sentences + 1)
+            
+            # Extract timestamp from the focus sentence if present
+            timestamp_match = re.search(r'\[(\d{2}:\d{2})\]', sentences[center_sentence_idx])
+            timestamp = timestamp_match.group(1) if timestamp_match else ""
+            
+            return {
+                "context": " ".join(sentences[start_idx:end_idx]),
+                "context_before": sentences[start_idx:center_sentence_idx],
+                "focus_sentence": sentences[center_sentence_idx],
+                "context_after": sentences[center_sentence_idx + 1:end_idx],
+                "timestamp": timestamp
+            }
+        except Exception as e:
+            logger.error(f"Error getting context: {e}")
             return {
                 "context": "",
-                "before": [],
-                "citation": "",
-                "after": []
+                "context_before": [],
+                "focus_sentence": "",
+                "context_after": [],
+                "timestamp": ""
             }
-        
-        # Get surrounding context
-        start_idx = max(0, center_sentence_idx - context_sentences)
-        end_idx = min(len(sentences), center_sentence_idx + context_sentences + 1)
-        
-        return {
-            "context": " ".join(sentences[start_idx:end_idx]),
-            "before": sentences[start_idx:center_sentence_idx],
-            "citation": sentences[center_sentence_idx],
-            "after": sentences[center_sentence_idx + 1:end_idx],
-            "timestamp": self._find_timestamp(transcript, sentences[center_sentence_idx])
-        }
 
     def _find_timestamp(self, transcript: str, sentence: str) -> str:
         """
@@ -1990,16 +2033,18 @@ def display_evaluation(evaluation: Dict[str, Any]):
                             # Display context before the citation
                             if "before" in citation and citation["before"]:
                                 st.caption("Context before:")
-                                st.write(" ".join(citation["before"]))
+                                for sentence in citation["before"]:
+                                    st.write(sentence)
                             
                             # Display the main citation with timestamp
-                            st.markdown(f"**Citation** (at {citation.get('timestamp', 'N/A')}):")
-                            st.info(citation.get("citation", ""))
+                            st.markdown(f"**[{citation.get('timestamp', 'N/A')}] Focus point:**")
+                            st.info(citation.get("focus_sentence", ""))
                             
                             # Display context after the citation
                             if "after" in citation and citation["after"]:
                                 st.caption("Context after:")
-                                st.write(" ".join(citation["after"]))
+                                for sentence in citation["after"]:
+                                    st.write(sentence)
                             
                             st.divider()  # Add visual separator between citations
 
