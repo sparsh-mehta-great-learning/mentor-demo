@@ -501,31 +501,37 @@ class ContentAnalyzer:
             'context': self._get_surrounding_context(transcript, start_idx, end_idx)
         }
 
-    def _get_surrounding_context(self, transcript: str, center_start: int, center_end: int, 
-                               context_sentences: int = 2) -> Dict[str, Any]:
-        """
-        Get surrounding sentences for better context
-        """
-        sentences = nltk.sent_tokenize(transcript)
+    def _get_surrounding_context(self, transcript: str, center_start: int, center_end: int, context_sentences: int = 2) -> Dict[str, Any]:
+        # ... existing code ...
         
-        # Find the center sentence
-        center_text = transcript[center_start:center_end]
-        center_idx = -1
-        for i, sent in enumerate(sentences):
-            if center_text in sent:
-                center_idx = i
+        # Create a window of sentences before and after the citation
+        sentences = nltk.sent_tokenize(transcript)
+        center_sentence_idx = -1
+        
+        # Find the sentence containing our citation
+        for idx, sentence in enumerate(sentences):
+            if center_start >= len(''.join(sentences[:idx])) and center_start < len(''.join(sentences[:idx+1])):
+                center_sentence_idx = idx
                 break
-                
+        
+        if center_sentence_idx == -1:
+            return {
+                "context": "",
+                "before": [],
+                "citation": "",
+                "after": []
+            }
+        
         # Get surrounding context
-        start_idx = max(0, center_idx - context_sentences)
-        end_idx = min(len(sentences), center_idx + context_sentences + 1)
+        start_idx = max(0, center_sentence_idx - context_sentences)
+        end_idx = min(len(sentences), center_sentence_idx + context_sentences + 1)
         
         return {
-            'focus_sentence': sentences[center_idx],
-            'context_before': sentences[start_idx:center_idx],
-            'context_after': sentences[center_idx + 1:end_idx],
-            'start_time': self._find_timestamp(transcript, sentences[start_idx]),
-            'end_time': self._find_timestamp(transcript, sentences[end_idx - 1])
+            "context": " ".join(sentences[start_idx:end_idx]),
+            "before": sentences[start_idx:center_sentence_idx],
+            "citation": sentences[center_sentence_idx],
+            "after": sentences[center_sentence_idx + 1:end_idx],
+            "timestamp": self._find_timestamp(transcript, sentences[center_sentence_idx])
         }
 
     def _find_timestamp(self, transcript: str, sentence: str) -> str:
@@ -1974,6 +1980,28 @@ def display_evaluation(evaluation: Dict[str, Any]):
                                 """, unsafe_allow_html=True)
                     
                     st.markdown("</div></div>", unsafe_allow_html=True)
+
+            # In the teaching tab section
+            with st.expander("🎓 Teaching Style Analysis", expanded=True):
+                if "teaching_citations" in evaluation:
+                    st.subheader("Teaching Style Observations")
+                    for citation in evaluation["teaching_citations"]:
+                        with st.container():
+                            # Display context before the citation
+                            if "before" in citation and citation["before"]:
+                                st.caption("Context before:")
+                                st.write(" ".join(citation["before"]))
+                            
+                            # Display the main citation with timestamp
+                            st.markdown(f"**Citation** (at {citation.get('timestamp', 'N/A')}):")
+                            st.info(citation.get("citation", ""))
+                            
+                            # Display context after the citation
+                            if "after" in citation and citation["after"]:
+                                st.caption("Context after:")
+                                st.write(" ".join(citation["after"]))
+                            
+                            st.divider()  # Add visual separator between citations
 
         with tabs[2]:
             st.header("Recommendations")
