@@ -1873,10 +1873,26 @@ def display_evaluation(evaluation: Dict[str, Any]):
                     score = details.get("Score", 0)
                     citations = details.get("Citations", [])
                     
+                    # Convert citations to proper format if they're not already dictionaries
+                    formatted_citations = []
+                    for citation in citations:
+                        if isinstance(citation, dict):
+                            formatted_citations.append(citation)
+                        else:
+                            # Create a simple citation dictionary if it's just a string
+                            formatted_citations.append({
+                                "timestamp": "N/A",
+                                "context": {
+                                    "context_before": [],
+                                    "focus_sentence": str(citation),
+                                    "context_after": []
+                                }
+                            })
+                    
                     # Get AI-generated suggestions if score is 0
                     suggestions = []
                     if score == 0:
-                        suggestions = content_analyzer.generate_suggestions(category, citations)
+                        suggestions = content_analyzer.generate_suggestions(category, formatted_citations)
                     
                     # Create suggestions based on score and category
                     st.markdown(f"""
@@ -1890,31 +1906,30 @@ def display_evaluation(evaluation: Dict[str, Any]):
                             <div class="citations-container">
                     """, unsafe_allow_html=True)
                     
-                    # Display citations
-                    for citation in citations:
+                    # Display citations with full context
+                    for citation in formatted_citations:
                         st.markdown(f"""
                             <div class="citation-box">
-                                <i class="citation-text">{citation}</i>
-                            </div>
+                                <div class="citation-timestamp">[{citation.get('timestamp', 'N/A')}]</div>
+                                <div class="citation-context">
                         """, unsafe_allow_html=True)
-                    
-                    # Display AI-generated suggestions if score is 0
-                    if score == 0 and suggestions:
-                        st.markdown("""
-                            <div class="suggestions-box">
-                                <h4>🎯 Suggestions for Improvement:</h4>
-                            </div>
-                        """, unsafe_allow_html=True)
-                        for suggestion in suggestions:
-                            st.markdown(f"""
-                                <div class="suggestion-item">
-                                    • {suggestion}
-                                </div>
-                            """, unsafe_allow_html=True)
-                    
-                    st.markdown("</div></div>", unsafe_allow_html=True)
-                    st.markdown("---")
-            
+                        
+                        # Display context before
+                        if "context" in citation and "context_before" in citation["context"]:
+                            for sentence in citation["context"]["context_before"]:
+                                st.write(sentence)
+                        
+                        # Display focus sentence
+                        if "context" in citation and "focus_sentence" in citation["context"]:
+                            st.info(citation["context"]["focus_sentence"])
+                        
+                        # Display context after
+                        if "context" in citation and "context_after" in citation["context"]:
+                            for sentence in citation["context"]["context_after"]:
+                                st.write(sentence)
+                        
+                        st.markdown("</div></div>", unsafe_allow_html=True)
+
             # Display Code Assessment with AI-generated suggestions
             with st.expander("💻 Code Assessment", expanded=True):
                 code_data = teaching_data.get("Code Assessment", {})
