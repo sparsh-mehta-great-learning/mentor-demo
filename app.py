@@ -1774,7 +1774,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
             teaching_data = evaluation.get("teaching", {})
             content_analyzer = ContentAnalyzer(st.secrets["OPENAI_API_KEY"])
             
-            # Display Concept Assessment with AI-generated suggestions
+            # Display Concept Assessment with enhanced citation context
             with st.expander("📚 Concept Assessment", expanded=True):
                 concept_data = teaching_data.get("Concept Assessment", {})
                 
@@ -1782,12 +1782,6 @@ def display_evaluation(evaluation: Dict[str, Any]):
                     score = details.get("Score", 0)
                     citations = details.get("Citations", [])
                     
-                    # Get AI-generated suggestions if score is 0
-                    suggestions = []
-                    if score == 0:
-                        suggestions = content_analyzer.generate_suggestions(category, citations)
-                    
-                    # Create suggestions based on score and category
                     st.markdown(f"""
                         <div class="teaching-card">
                             <div class="teaching-header">
@@ -1796,113 +1790,57 @@ def display_evaluation(evaluation: Dict[str, Any]):
                                     {'✅ Pass' if score == 1 else '❌ Needs Work'}
                                 </span>
                             </div>
-                            <div class="citations-container">
+                        </div>
                     """, unsafe_allow_html=True)
                     
-                    # Process all citations and their contexts
-                    citation_contexts = []
-                    transcript = evaluation.get("transcript", "")
-                    
-                    if transcript and citations:
-                        sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', transcript) if s.strip()]
-                        
+                    if citations:
+                        st.markdown("##### 📝 Supporting Evidence")
                         for citation in citations:
-                            try:
-                                # Find all sentences containing any part of the citation
-                                citation_indices = []
-                                citation_lower = citation.lower()
-                                
-                                for i, sentence in enumerate(sentences):
-                                    if citation_lower in sentence.lower():
-                                        citation_indices.append(i)
-                                
-                                if citation_indices:
-                                    # Use the first occurrence if multiple found
-                                    citation_index = citation_indices[0]
-                                    
-                                    # Get surrounding context (2 sentences before and after)
-                                    context_start = max(0, citation_index - 2)
-                                    context_end = min(len(sentences), citation_index + 3)
-                                    
-                                    # Get context sentences
-                                    context_sentences = sentences[context_start:context_end]
-                                    
-                                    # Store citation with its context
-                                    citation_contexts.append({
-                                        "citation": citation,
-                                        "context_sentences": context_sentences,
-                                        "citation_index": citation_index - context_start,  # Relative index in context
-                                        "timestamp": {
-                                            "start": context_start * 30,
-                                            "end": context_end * 30
-                                        }
-                                    })
-                            except Exception as e:
-                                logger.error(f"Error processing citation context: {e}")
-                                citation_contexts.append({
-                                    "citation": citation,
-                                    "context_sentences": [citation],
-                                    "citation_index": 0,
-                                    "timestamp": {"start": 0, "end": 0}
-                                })
-                    
-                    # Display all citations with their contexts
-                    for ctx in citation_contexts:
-                        try:
-                            # Format context with highlighted citation
-                            formatted_sentences = []
-                            for i, sentence in enumerate(ctx["context_sentences"]):
-                                if i == ctx["citation_index"]:
-                                    # Highlight the citation within its sentence
-                                    highlighted = sentence.replace(
-                                        ctx["citation"],
-                                        f'<span class="highlight">{ctx["citation"]}</span>'
-                                    )
-                                    formatted_sentences.append(highlighted)
-                                else:
-                                    formatted_sentences.append(sentence)
+                            # Extract timestamp if available
+                            timestamp_match = re.match(r'\[(\d+:\d+)\]', citation)
+                            timestamp = timestamp_match.group(1) if timestamp_match else "00:00"
                             
-                            context_html = " ".join(formatted_sentences)
+                            # Extract the actual quote
+                            quote = re.sub(r'\[\d+:\d+\]\s*', '', citation).strip("'")
                             
-                            st.markdown(f"""
-                                <div class="citation-box">
-                                    <div class="citation-context">
-                                        <div class="context-label">Context:</div>
-                                        <div class="context-text">{context_html}</div>
+                            # Find the quote in the transcript
+                            transcript = evaluation.get("transcript", "")
+                            if transcript and quote in transcript:
+                                # Get surrounding context (approximately 100 characters before and after)
+                                quote_index = transcript.find(quote)
+                                start_index = max(0, quote_index - 200)
+                                end_index = min(len(transcript), quote_index + len(quote) + 200)
+                                
+                                # Get the context
+                                context = transcript[start_index:end_index]
+                                
+                                # Add ellipsis if we truncated the context
+                                if start_index > 0:
+                                    context = "..." + context
+                                if end_index < len(transcript):
+                                    context = context + "..."
+                                
+                                # Highlight the quote within the context
+                                highlighted_context = context.replace(quote, f'<span class="highlight">{quote}</span>')
+                                
+                                st.markdown(f"""
+                                    <div class="citation-box">
+                                        <div class="citation-timestamp">🕒 Timestamp: {timestamp}</div>
+                                        <div class="citation-context">
+                                            {highlighted_context}
+                                        </div>
                                     </div>
-                                    <div class="citation-timestamp">
-                                        Approximate timestamp: {ctx["timestamp"]["start"]}s - {ctx["timestamp"]["end"]}s
+                                """, unsafe_allow_html=True)
+                            else:
+                                # Fallback to displaying just the citation
+                                st.markdown(f"""
+                                    <div class="citation-box">
+                                        <div class="citation-timestamp">🕒 Timestamp: {timestamp}</div>
+                                        <div class="citation-text">"{quote}"</div>
                                     </div>
-                                </div>
-                            """, unsafe_allow_html=True)
-                        except Exception as e:
-                            logger.error(f"Error displaying citation context: {e}")
-                            st.markdown(f"""
-                                <div class="citation-box">
-                                    <div class="citation-text">
-                                        "{ctx["citation"]}"
-                                    </div>
-                                </div>
-                            """, unsafe_allow_html=True)
-                    
-                    # Display AI-generated suggestions if score is 0
-                    if score == 0 and suggestions:
-                        st.markdown("""
-                            <div class="suggestions-box">
-                                <h4>🎯 Suggestions for Improvement:</h4>
-                            </div>
-                        """, unsafe_allow_html=True)
-                        for suggestion in suggestions:
-                            st.markdown(f"""
-                                <div class="suggestion-item">
-                                    • {suggestion}
-                                </div>
-                            """, unsafe_allow_html=True)
-                    
-                    st.markdown("</div></div>", unsafe_allow_html=True)
-                    st.markdown("---")
+                                """, unsafe_allow_html=True)
 
-            # Add updated CSS for better citation display
+            # Update the CSS for better citation display
             st.markdown("""
                 <style>
                 .citation-box {
@@ -1919,17 +1857,14 @@ def display_evaluation(evaluation: Dict[str, Any]):
                     transform: translateX(5px);
                 }
                 
-                .citation-context {
-                    margin-bottom: 10px;
-                }
-                
-                .context-label {
+                .citation-timestamp {
+                    color: #6c757d;
+                    font-size: 0.9em;
                     font-weight: bold;
-                    color: #1f77b4;
-                    margin-bottom: 5px;
+                    margin-bottom: 8px;
                 }
                 
-                .context-text {
+                .citation-context {
                     color: #212529;
                     line-height: 1.6;
                     padding: 12px;
@@ -1937,6 +1872,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
                     border-radius: 4px;
                     border: 1px solid #e9ecef;
                     font-size: 1.1em;
+                    margin-top: 8px;
                 }
                 
                 .highlight {
@@ -1945,15 +1881,6 @@ def display_evaluation(evaluation: Dict[str, Any]):
                     border-radius: 2px;
                     font-weight: bold;
                     color: #856404;
-                }
-                
-                .citation-timestamp {
-                    color: #6c757d;
-                    font-size: 0.9em;
-                    font-style: italic;
-                    margin-top: 8px;
-                    border-top: 1px solid #e9ecef;
-                    padding-top: 8px;
                 }
                 
                 .citation-text {
@@ -1965,12 +1892,45 @@ def display_evaluation(evaluation: Dict[str, Any]):
                     border: 1px solid #e9ecef;
                 }
                 
-                .citations-container {
-                    margin-top: 15px;
+                .teaching-card {
+                    background: white;
+                    border-radius: 8px;
+                    padding: 15px;
+                    margin: 15px 0;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }
+                
+                .teaching-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 10px;
+                }
+                
+                .category-name {
+                    font-size: 1.2em;
+                    font-weight: bold;
+                    color: #2c3e50;
+                }
+                
+                .score-badge {
+                    padding: 5px 10px;
+                    border-radius: 15px;
+                    font-weight: bold;
+                }
+                
+                .score-pass {
+                    background-color: #d4edda;
+                    color: #155724;
+                }
+                
+                .score-fail {
+                    background-color: #f8d7da;
+                    color: #721c24;
                 }
                 </style>
             """, unsafe_allow_html=True)
-            
+
             # Display Code Assessment with AI-generated suggestions
             with st.expander("💻 Code Assessment", expanded=True):
                 code_data = teaching_data.get("Code Assessment", {})
