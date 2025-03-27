@@ -1804,43 +1804,72 @@ def display_evaluation(evaluation: Dict[str, Any]):
                         # Find the citation in the transcript
                         transcript = evaluation.get("transcript", "")
                         if transcript:
-                            # Split transcript into sentences
-                            sentences = re.split(r'(?<=[.!?])\s+', transcript)
-                            
-                            # Find the sentence containing the citation
-                            citation_index = -1
-                            for i, sentence in enumerate(sentences):
-                                if citation in sentence:
-                                    citation_index = i
-                                    break
-                            
-                            if citation_index != -1:
-                                # Get surrounding context (2 sentences before and after)
-                                context_start = max(0, citation_index - 2)
-                                context_end = min(len(sentences), citation_index + 3)
+                            try:
+                                # Split transcript into sentences more reliably
+                                sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', transcript) if s.strip()]
                                 
-                                # Build context string
-                                context_sentences = sentences[context_start:context_end]
-                                context = " ".join(context_sentences)
+                                # Find all sentences containing any part of the citation
+                                citation_indices = []
+                                citation_lower = citation.lower()
+                                for i, sentence in enumerate(sentences):
+                                    if citation_lower in sentence.lower():
+                                        citation_indices.append(i)
                                 
-                                # Highlight the citation within the context
-                                highlighted_context = context.replace(citation, f"**{citation}**")
-                                
+                                if citation_indices:
+                                    # Use the first occurrence if multiple found
+                                    citation_index = citation_indices[0]
+                                    
+                                    # Get surrounding context (2 sentences before and after)
+                                    context_start = max(0, citation_index - 2)
+                                    context_end = min(len(sentences), citation_index + 3)
+                                    
+                                    # Build context string with clear separation
+                                    context_sentences = sentences[context_start:context_end]
+                                    
+                                    # Create a formatted context with the citation highlighted
+                                    formatted_context = []
+                                    for i, sentence in enumerate(context_sentences):
+                                        if i + context_start == citation_index:
+                                            # Highlight the citation within its sentence
+                                            highlighted = sentence.replace(
+                                                citation,
+                                                f'<span class="highlight">{citation}</span>'
+                                            )
+                                            formatted_context.append(highlighted)
+                                        else:
+                                            formatted_context.append(sentence)
+                                    
+                                    context_html = " ".join(formatted_context)
+                                    
+                                    # Display with enhanced styling
+                                    st.markdown(f"""
+                                        <div class="citation-box">
+                                            <div class="citation-context">
+                                                <div class="context-label">Context:</div>
+                                                <div class="context-text">{context_html}</div>
+                                            </div>
+                                            <div class="citation-timestamp">
+                                                Approximate timestamp: {context_start * 30}s - {context_end * 30}s
+                                            </div>
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                                else:
+                                    # Fallback to just showing the citation if context can't be found
+                                    st.markdown(f"""
+                                        <div class="citation-box">
+                                            <div class="citation-text">
+                                                "{citation}"
+                                            </div>
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                            except Exception as e:
+                                logger.error(f"Error processing citation context: {e}")
+                                # Fallback to basic citation display
                                 st.markdown(f"""
                                     <div class="citation-box">
-                                        <div class="citation-context">
-                                            {highlighted_context}
+                                        <div class="citation-text">
+                                            "{citation}"
                                         </div>
-                                        <div class="citation-timestamp">
-                                            {context_start * 30}s - {context_end * 30}s
-                                        </div>
-                                    </div>
-                                """, unsafe_allow_html=True)
-                            else:
-                                # Fallback to just showing the citation if context can't be found
-                                st.markdown(f"""
-                                    <div class="citation-box">
-                                        <i class="citation-text">{citation}</i>
                                     </div>
                                 """, unsafe_allow_html=True)
                     
@@ -1890,43 +1919,72 @@ def display_evaluation(evaluation: Dict[str, Any]):
                         # Find the citation in the transcript
                         transcript = evaluation.get("transcript", "")
                         if transcript:
-                            # Split transcript into sentences
-                            sentences = re.split(r'(?<=[.!?])\s+', transcript)
-                            
-                            # Find the sentence containing the citation
-                            citation_index = -1
-                            for i, sentence in enumerate(sentences):
-                                if citation in sentence:
-                                    citation_index = i
-                                    break
-                            
-                            if citation_index != -1:
-                                # Get surrounding context (2 sentences before and after)
-                                context_start = max(0, citation_index - 2)
-                                context_end = min(len(sentences), citation_index + 3)
+                            try:
+                                # Split transcript into sentences more reliably
+                                sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', transcript) if s.strip()]
                                 
-                                # Build context string
-                                context_sentences = sentences[context_start:context_end]
-                                context = " ".join(context_sentences)
+                                # Find all sentences containing any part of the citation
+                                citation_indices = []
+                                citation_lower = citation.lower()
+                                for i, sentence in enumerate(sentences):
+                                    if citation_lower in sentence.lower():
+                                        citation_indices.append(i)
                                 
-                                # Highlight the citation within the context
-                                highlighted_context = context.replace(citation, f"**{citation}**")
-                                
+                                if citation_indices:
+                                    # Use the first occurrence if multiple found
+                                    citation_index = citation_indices[0]
+                                    
+                                    # Get surrounding context (2 sentences before and after)
+                                    context_start = max(0, citation_index - 2)
+                                    context_end = min(len(sentences), citation_index + 3)
+                                    
+                                    # Build context string with clear separation
+                                    context_sentences = sentences[context_start:context_end]
+                                    
+                                    # Create a formatted context with the citation highlighted
+                                    formatted_context = []
+                                    for i, sentence in enumerate(context_sentences):
+                                        if i + context_start == citation_index:
+                                            # Highlight the citation within its sentence
+                                            highlighted = sentence.replace(
+                                                citation,
+                                                f'<span class="highlight">{citation}</span>'
+                                            )
+                                            formatted_context.append(highlighted)
+                                        else:
+                                            formatted_context.append(sentence)
+                                    
+                                    context_html = " ".join(formatted_context)
+                                    
+                                    # Display with enhanced styling
+                                    st.markdown(f"""
+                                        <div class="citation-box">
+                                            <div class="citation-context">
+                                                <div class="context-label">Context:</div>
+                                                <div class="context-text">{context_html}</div>
+                                            </div>
+                                            <div class="citation-timestamp">
+                                                Approximate timestamp: {context_start * 30}s - {context_end * 30}s
+                                            </div>
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                                else:
+                                    # Fallback to just showing the citation if context can't be found
+                                    st.markdown(f"""
+                                        <div class="citation-box">
+                                            <div class="citation-text">
+                                                "{citation}"
+                                            </div>
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                            except Exception as e:
+                                logger.error(f"Error processing citation context: {e}")
+                                # Fallback to basic citation display
                                 st.markdown(f"""
                                     <div class="citation-box">
-                                        <div class="citation-context">
-                                            {highlighted_context}
+                                        <div class="citation-text">
+                                            "{citation}"
                                         </div>
-                                        <div class="citation-timestamp">
-                                            {context_start * 30}s - {context_end * 30}s
-                                        </div>
-                                    </div>
-                                """, unsafe_allow_html=True)
-                            else:
-                                # Fallback to just showing the citation if context can't be found
-                                st.markdown(f"""
-                                    <div class="citation-box">
-                                        <i class="citation-text">{citation}</i>
                                     </div>
                                 """, unsafe_allow_html=True)
                     
@@ -1987,43 +2045,72 @@ def display_evaluation(evaluation: Dict[str, Any]):
                         # Find the citation in the transcript
                         transcript = evaluation.get("transcript", "")
                         if transcript:
-                            # Split transcript into sentences
-                            sentences = re.split(r'(?<=[.!?])\s+', transcript)
-                            
-                            # Find the sentence containing the citation
-                            citation_index = -1
-                            for i, sentence in enumerate(sentences):
-                                if citation in sentence:
-                                    citation_index = i
-                                    break
-                            
-                            if citation_index != -1:
-                                # Get surrounding context (2 sentences before and after)
-                                context_start = max(0, citation_index - 2)
-                                context_end = min(len(sentences), citation_index + 3)
+                            try:
+                                # Split transcript into sentences more reliably
+                                sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', transcript) if s.strip()]
                                 
-                                # Build context string
-                                context_sentences = sentences[context_start:context_end]
-                                context = " ".join(context_sentences)
+                                # Find all sentences containing any part of the citation
+                                citation_indices = []
+                                citation_lower = citation.lower()
+                                for i, sentence in enumerate(sentences):
+                                    if citation_lower in sentence.lower():
+                                        citation_indices.append(i)
                                 
-                                # Highlight the citation within the context
-                                highlighted_context = context.replace(citation, f"**{citation}**")
-                                
+                                if citation_indices:
+                                    # Use the first occurrence if multiple found
+                                    citation_index = citation_indices[0]
+                                    
+                                    # Get surrounding context (2 sentences before and after)
+                                    context_start = max(0, citation_index - 2)
+                                    context_end = min(len(sentences), citation_index + 3)
+                                    
+                                    # Build context string with clear separation
+                                    context_sentences = sentences[context_start:context_end]
+                                    
+                                    # Create a formatted context with the citation highlighted
+                                    formatted_context = []
+                                    for i, sentence in enumerate(context_sentences):
+                                        if i + context_start == citation_index:
+                                            # Highlight the citation within its sentence
+                                            highlighted = sentence.replace(
+                                                citation,
+                                                f'<span class="highlight">{citation}</span>'
+                                            )
+                                            formatted_context.append(highlighted)
+                                        else:
+                                            formatted_context.append(sentence)
+                                    
+                                    context_html = " ".join(formatted_context)
+                                    
+                                    # Display with enhanced styling
+                                    st.markdown(f"""
+                                        <div class="citation-box">
+                                            <div class="citation-context">
+                                                <div class="context-label">Context:</div>
+                                                <div class="context-text">{context_html}</div>
+                                            </div>
+                                            <div class="citation-timestamp">
+                                                Approximate timestamp: {context_start * 30}s - {context_end * 30}s
+                                            </div>
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                                else:
+                                    # Fallback to just showing the citation if context can't be found
+                                    st.markdown(f"""
+                                        <div class="citation-box">
+                                            <div class="citation-text">
+                                                "{citation}"
+                                            </div>
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                            except Exception as e:
+                                logger.error(f"Error processing citation context: {e}")
+                                # Fallback to basic citation display
                                 st.markdown(f"""
                                     <div class="citation-box">
-                                        <div class="citation-context">
-                                            {highlighted_context}
+                                        <div class="citation-text">
+                                            "{citation}"
                                         </div>
-                                        <div class="citation-timestamp">
-                                            {context_start * 30}s - {context_end * 30}s
-                                        </div>
-                                    </div>
-                                """, unsafe_allow_html=True)
-                            else:
-                                # Fallback to just showing the citation if context can't be found
-                                st.markdown(f"""
-                                    <div class="citation-box">
-                                        <i class="citation-text">{citation}</i>
                                     </div>
                                 """, unsafe_allow_html=True)
                     
