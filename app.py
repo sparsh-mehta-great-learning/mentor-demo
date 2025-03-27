@@ -1931,7 +1931,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
                 </style>
             """, unsafe_allow_html=True)
 
-            # Display Code Assessment with AI-generated suggestions
+            # Display Code Assessment with enhanced citation context
             with st.expander("💻 Code Assessment", expanded=True):
                 code_data = teaching_data.get("Code Assessment", {})
                 
@@ -1939,12 +1939,6 @@ def display_evaluation(evaluation: Dict[str, Any]):
                     score = details.get("Score", 0)
                     citations = details.get("Citations", [])
                     
-                    # Get AI-generated suggestions if score is 0
-                    suggestions = []
-                    if score == 0:
-                        suggestions = content_analyzer.generate_suggestions(category, citations)
-                    
-                    # Create suggestions based on score and category
                     st.markdown(f"""
                         <div class="teaching-card">
                             <div class="teaching-header">
@@ -1953,224 +1947,227 @@ def display_evaluation(evaluation: Dict[str, Any]):
                                     {'✅ Pass' if score == 1 else '❌ Needs Work'}
                                 </span>
                             </div>
-                            <div class="citations-container">
+                        </div>
                     """, unsafe_allow_html=True)
                     
-                    for citation in citations:
-                        # Find the citation in the transcript
-                        transcript = evaluation.get("transcript", "")
-                        if transcript:
-                            try:
-                                # Split transcript into sentences more reliably
-                                sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', transcript) if s.strip()]
+                    if citations:
+                        st.markdown("##### 📝 Code Examples & Explanations")
+                        for citation in citations:
+                            # Extract timestamp if available
+                            timestamp_match = re.match(r'\[(\d+:\d+)\]', citation)
+                            timestamp = timestamp_match.group(1) if timestamp_match else "00:00"
+                            
+                            # Extract the actual quote
+                            quote = re.sub(r'\[\d+:\d+\]\s*', '', citation).strip("'")
+                            
+                            # Find the quote in the transcript
+                            transcript = evaluation.get("transcript", "")
+                            if transcript and quote in transcript:
+                                # Get surrounding context
+                                quote_index = transcript.find(quote)
+                                start_index = max(0, quote_index - 200)
+                                end_index = min(len(transcript), quote_index + len(quote) + 200)
                                 
-                                # Find all sentences containing any part of the citation
-                                citation_indices = []
-                                citation_lower = citation.lower()
-                                for i, sentence in enumerate(sentences):
-                                    if citation_lower in sentence.lower():
-                                        citation_indices.append(i)
+                                context = transcript[start_index:end_index]
                                 
-                                if citation_indices:
-                                    # Use the first occurrence if multiple found
-                                    citation_index = citation_indices[0]
-                                    
-                                    # Get surrounding context (2 sentences before and after)
-                                    context_start = max(0, citation_index - 2)
-                                    context_end = min(len(sentences), citation_index + 3)
-                                    
-                                    # Build context string with clear separation
-                                    context_sentences = sentences[context_start:context_end]
-                                    
-                                    # Create a formatted context with the citation highlighted
-                                    formatted_context = []
-                                    for i, sentence in enumerate(context_sentences):
-                                        if i + context_start == citation_index:
-                                            # Highlight the citation within its sentence
-                                            highlighted = sentence.replace(
-                                                citation,
-                                                f'<span class="highlight">{citation}</span>'
-                                            )
-                                            formatted_context.append(highlighted)
-                                        else:
-                                            formatted_context.append(sentence)
-                                    
-                                    context_html = " ".join(formatted_context)
-                                    
-                                    # Display with enhanced styling
-                                    st.markdown(f"""
-                                        <div class="citation-box">
-                                            <div class="citation-context">
-                                                <div class="context-label">Context:</div>
-                                                <div class="context-text">{context_html}</div>
-                                            </div>
-                                            <div class="citation-timestamp">
-                                                Approximate timestamp: {context_start * 30}s - {context_end * 30}s
-                                            </div>
-                                        </div>
-                                    """, unsafe_allow_html=True)
-                                else:
-                                    # Fallback to just showing the citation if context can't be found
-                                    st.markdown(f"""
-                                        <div class="citation-box">
-                                            <div class="citation-text">
-                                                "{citation}"
-                                            </div>
-                                        </div>
-                                    """, unsafe_allow_html=True)
-                            except Exception as e:
-                                logger.error(f"Error processing citation context: {e}")
-                                # Fallback to basic citation display
+                                if start_index > 0:
+                                    context = "..." + context
+                                if end_index < len(transcript):
+                                    context = context + "..."
+                                
+                                highlighted_context = context.replace(quote, f'<span class="highlight-code">{quote}</span>')
+                                
                                 st.markdown(f"""
-                                    <div class="citation-box">
-                                        <div class="citation-text">
-                                            "{citation}"
+                                    <div class="code-citation-box">
+                                        <div class="citation-timestamp">🕒 Timestamp: {timestamp}</div>
+                                        <div class="code-citation-context">
+                                            {highlighted_context}
+                                        </div>
+                                    </div>
+                                """, unsafe_allow_html=True)
+                            else:
+                                st.markdown(f"""
+                                    <div class="code-citation-box">
+                                        <div class="citation-timestamp">🕒 Timestamp: {timestamp}</div>
+                                        <div class="citation-text">"{quote}"</div>
+                                    </div>
+                                """, unsafe_allow_html=True)
+
+            # Display Question Handling Assessment with enhanced citation context
+            with st.expander("❓ Question Handling Assessment", expanded=True):
+                question_data = concept_data.get("Question Handling", {})
+                if question_data:
+                    main_score = question_data.get("Score", 0)
+                    main_citations = question_data.get("Citations", [])
+                    details = question_data.get("Details", {})
+                    
+                    st.markdown(f"""
+                        <div class="teaching-card">
+                            <div class="teaching-header">
+                                <span class="category-name">Overall Question Handling</span>
+                                <span class="score-badge {'score-pass' if main_score == 1 else 'score-fail'}">
+                                    {'✅ Pass' if main_score == 1 else '❌ Needs Work'}
+                                </span>
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Display main citations
+                    if main_citations:
+                        st.markdown("##### 📝 General Question Handling Examples")
+                        for citation in main_citations:
+                            # Process citation with context (same as above)
+                            timestamp_match = re.match(r'\[(\d+:\d+)\]', citation)
+                            timestamp = timestamp_match.group(1) if timestamp_match else "00:00"
+                            quote = re.sub(r'\[\d+:\d+\]\s*', '', citation).strip("'")
+                            
+                            transcript = evaluation.get("transcript", "")
+                            if transcript and quote in transcript:
+                                quote_index = transcript.find(quote)
+                                start_index = max(0, quote_index - 200)
+                                end_index = min(len(transcript), quote_index + len(quote) + 200)
+                                context = transcript[start_index:end_index]
+                                
+                                if start_index > 0:
+                                    context = "..." + context
+                                if end_index < len(transcript):
+                                    context = context + "..."
+                                
+                                highlighted_context = context.replace(quote, f'<span class="highlight-question">{quote}</span>')
+                                
+                                st.markdown(f"""
+                                    <div class="question-citation-box">
+                                        <div class="citation-timestamp">🕒 Timestamp: {timestamp}</div>
+                                        <div class="question-citation-context">
+                                            {highlighted_context}
                                         </div>
                                     </div>
                                 """, unsafe_allow_html=True)
                     
-                    # Display AI-generated suggestions if score is 0
-                    if score == 0 and suggestions:
-                        st.markdown("""
-                            <div class="suggestions-box">
-                                <h4>🎯Suggestions for Improvement:</h4>
+                    # Display detailed assessments
+                    for aspect, aspect_details in details.items():
+                        score = aspect_details.get("Score", 0)
+                        citations = aspect_details.get("Citations", [])
+                        
+                        st.markdown(f"""
+                            <div class="question-detail-card">
+                                <div class="detail-header">
+                                    <span class="detail-name">{aspect}</span>
+                                    <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
+                                        {'✅ Pass' if score == 1 else '❌ Needs Work'}
+                                    </span>
+                                </div>
                             </div>
                         """, unsafe_allow_html=True)
-                        for suggestion in suggestions:
-                            st.markdown(f"""
-                                <div class="suggestion-item">
-                                    • {suggestion}
-                                </div>
-                            """, unsafe_allow_html=True)
-                    
-                    st.markdown("</div></div>", unsafe_allow_html=True)
-                    st.markdown("---")
+                        
+                        if citations:
+                            for citation in citations:
+                                # Process citation with context (same as above)
+                                timestamp_match = re.match(r'\[(\d+:\d+)\]', citation)
+                                timestamp = timestamp_match.group(1) if timestamp_match else "00:00"
+                                quote = re.sub(r'\[\d+:\d+\]\s*', '', citation).strip("'")
+                                
+                                transcript = evaluation.get("transcript", "")
+                                if transcript and quote in transcript:
+                                    quote_index = transcript.find(quote)
+                                    start_index = max(0, quote_index - 200)
+                                    end_index = min(len(transcript), quote_index + len(quote) + 200)
+                                    context = transcript[start_index:end_index]
+                                    
+                                    if start_index > 0:
+                                        context = "..." + context
+                                    if end_index < len(transcript):
+                                        context = context + "..."
+                                    
+                                    highlighted_context = context.replace(quote, f'<span class="highlight-question">{quote}</span>')
+                                    
+                                    st.markdown(f"""
+                                        <div class="question-detail-citation-box">
+                                            <div class="citation-timestamp">🕒 Timestamp: {timestamp}</div>
+                                            <div class="question-citation-context">
+                                                {highlighted_context}
+                                            </div>
+                                        </div>
+                                    """, unsafe_allow_html=True)
 
-            # Add Question Handling Assessment section
-            with st.expander("❓ Question Handling Assessment", expanded=True):
-                teaching_data = evaluation.get("teaching", {})
-                concept_data = teaching_data.get("Concept Assessment", {})
-                question_data = concept_data.get("Question Handling", {})
+            # Add additional CSS for code and question handling sections
+            st.markdown("""
+                <style>
+                /* Code Assessment Styles */
+                .code-citation-box {
+                    background: #f8f9fa;
+                    border-left: 4px solid #28a745;
+                    padding: 15px;
+                    margin: 15px 0;
+                    border-radius: 4px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                    transition: transform 0.2s ease;
+                }
                 
-                # Overall Question Handling Score
-                overall_score = question_data.get("Score", 0)
-                st.markdown(f"""
-                    <div class="teaching-card">
-                        <div class="teaching-header">
-                            <span class="category-name">Overall Question Handling</span>
-                            <span class="score-badge {'score-pass' if overall_score == 1 else 'score-fail'}">
-                                {'✅ Excellent' if overall_score == 1 else '❌ Needs Improvement'}
-                            </span>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-
-                # Detailed Assessment Categories
-                details = question_data.get("Details", {})
-                for category, data in details.items():
-                    score = data.get("Score", 0)
-                    citations = data.get("Citations", [])
-                    
-                    st.markdown(f"""
-                        <div class="teaching-card">
-                            <div class="teaching-header">
-                                <span class="category-name">{category}</span>
-                                <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
-                                    {'✅ Pass' if score == 1 else '❌ Needs Work'}
-                                </span>
-                            </div>
-                            <div class="citations-container">
-                    """, unsafe_allow_html=True)
-                    
-                    for citation in citations:
-                        # Find the citation in the transcript
-                        transcript = evaluation.get("transcript", "")
-                        if transcript:
-                            try:
-                                # Split transcript into sentences more reliably
-                                sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', transcript) if s.strip()]
-                                
-                                # Find all sentences containing any part of the citation
-                                citation_indices = []
-                                citation_lower = citation.lower()
-                                for i, sentence in enumerate(sentences):
-                                    if citation_lower in sentence.lower():
-                                        citation_indices.append(i)
-                                
-                                if citation_indices:
-                                    # Use the first occurrence if multiple found
-                                    citation_index = citation_indices[0]
-                                    
-                                    # Get surrounding context (2 sentences before and after)
-                                    context_start = max(0, citation_index - 2)
-                                    context_end = min(len(sentences), citation_index + 3)
-                                    
-                                    # Build context string with clear separation
-                                    context_sentences = sentences[context_start:context_end]
-                                    
-                                    # Create a formatted context with the citation highlighted
-                                    formatted_context = []
-                                    for i, sentence in enumerate(context_sentences):
-                                        if i + context_start == citation_index:
-                                            # Highlight the citation within its sentence
-                                            highlighted = sentence.replace(
-                                                citation,
-                                                f'<span class="highlight">{citation}</span>'
-                                            )
-                                            formatted_context.append(highlighted)
-                                        else:
-                                            formatted_context.append(sentence)
-                                    
-                                    context_html = " ".join(formatted_context)
-                                    
-                                    # Display with enhanced styling
-                                    st.markdown(f"""
-                                        <div class="citation-box">
-                                            <div class="citation-context">
-                                                <div class="context-label">Context:</div>
-                                                <div class="context-text">{context_html}</div>
-                                            </div>
-                                            <div class="citation-timestamp">
-                                                Approximate timestamp: {context_start * 30}s - {context_end * 30}s
-                                            </div>
-                                        </div>
-                                    """, unsafe_allow_html=True)
-                                else:
-                                    # Fallback to just showing the citation if context can't be found
-                                    st.markdown(f"""
-                                        <div class="citation-box">
-                                            <div class="citation-text">
-                                                "{citation}"
-                                            </div>
-                                        </div>
-                                    """, unsafe_allow_html=True)
-                            except Exception as e:
-                                logger.error(f"Error processing citation context: {e}")
-                                # Fallback to basic citation display
-                                st.markdown(f"""
-                                    <div class="citation-box">
-                                        <div class="citation-text">
-                                            "{citation}"
-                                        </div>
-                                    </div>
-                                """, unsafe_allow_html=True)
-                    
-                    if score == 0:
-                        suggestions = content_analyzer.generate_suggestions(category, citations)
-                        if suggestions:
-                            st.markdown("""
-                                <div class="suggestions-box">
-                                    <h4>🎯 Suggestions for Improvement:</h4>
-                                </div>
-                            """, unsafe_allow_html=True)
-                            for suggestion in suggestions:
-                                st.markdown(f"""
-                                    <div class="suggestion-item">
-                                        • {suggestion}
-                                    </div>
-                                """, unsafe_allow_html=True)
-                    
-                    st.markdown("</div></div>", unsafe_allow_html=True)
+                .code-citation-box:hover {
+                    transform: translateX(5px);
+                }
+                
+                .highlight-code {
+                    background-color: #e8f5e9;
+                    padding: 2px 4px;
+                    border-radius: 2px;
+                    font-weight: bold;
+                    color: #2e7d32;
+                }
+                
+                /* Question Handling Styles */
+                .question-citation-box {
+                    background: #f8f9fa;
+                    border-left: 4px solid #9c27b0;
+                    padding: 15px;
+                    margin: 15px 0;
+                    border-radius: 4px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                    transition: transform 0.2s ease;
+                }
+                
+                .question-citation-box:hover {
+                    transform: translateX(5px);
+                }
+                
+                .highlight-question {
+                    background-color: #f3e5f5;
+                    padding: 2px 4px;
+                    border-radius: 2px;
+                    font-weight: bold;
+                    color: #6a1b9a;
+                }
+                
+                .question-detail-card {
+                    background: #f8f9fa;
+                    border-radius: 8px;
+                    padding: 12px;
+                    margin: 10px 0;
+                    border-left: 4px solid #9c27b0;
+                }
+                
+                .detail-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }
+                
+                .detail-name {
+                    font-size: 1.1em;
+                    font-weight: bold;
+                    color: #4a148c;
+                }
+                
+                .question-detail-citation-box {
+                    background: white;
+                    border-left: 3px solid #ce93d8;
+                    padding: 12px;
+                    margin: 10px 0;
+                    border-radius: 4px;
+                }
+                </style>
+            """, unsafe_allow_html=True)
 
         with tabs[2]:
             st.header("Recommendations")
