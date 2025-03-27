@@ -1799,53 +1799,12 @@ def display_evaluation(evaluation: Dict[str, Any]):
                             <div class="citations-container">
                     """, unsafe_allow_html=True)
                     
-                    # Display citations with trailing context
+                    # Display citations
                     for citation in citations:
-                        # Find the citation index in the transcript
-                        transcript = evaluation.get("transcript", "")
-                        citation_index = transcript.find(citation)
-                        
-                        if citation_index >= 0:
-                            # Get trailing context (up to 100 characters or next sentence)
-                            trailing_text = transcript[citation_index:].split('.')[0][:100]
-                            if len(trailing_text) == 100:
-                                trailing_text += "..."
-                            
-                            st.markdown(f"""
-                                <div class="citation-box">
-                                    <div class="citation-text">
-                                        <span class="highlight">{citation}</span>
-                                        <span class="context">{trailing_text[len(citation):]}</span>
-                                    </div>
-                                </div>
-                            """, unsafe_allow_html=True)
-                        
-                        # Add CSS for citation styling
-                        st.markdown("""
-                            <style>
-                            .citation-box {
-                                background-color: #f8f9fa;
-                                border-left: 3px solid #6c757d;
-                                padding: 10px;
-                                margin: 5px 0;
-                                border-radius: 0 4px 4px 0;
-                            }
-                            
-                            .citation-text {
-                                color: #495057;
-                            }
-                            
-                            .highlight {
-                                background-color: #fff3cd;
-                                padding: 2px 4px;
-                                border-radius: 3px;
-                            }
-                            
-                            .context {
-                                color: #6c757d;
-                                font-style: italic;
-                            }
-                            </style>
+                        st.markdown(f"""
+                            <div class="citation-box">
+                                <i class="citation-text">{citation}</i>
+                            </div>
                         """, unsafe_allow_html=True)
                     
                     # Display AI-generated suggestions if score is 0
@@ -1891,51 +1850,10 @@ def display_evaluation(evaluation: Dict[str, Any]):
                     """, unsafe_allow_html=True)
                     
                     for citation in citations:
-                        # Find the citation index in the transcript
-                        transcript = evaluation.get("transcript", "")
-                        citation_index = transcript.find(citation)
-                        
-                        if citation_index >= 0:
-                            # Get trailing context (up to 100 characters or next sentence)
-                            trailing_text = transcript[citation_index:].split('.')[0][:100]
-                            if len(trailing_text) == 100:
-                                trailing_text += "..."
-                            
-                            st.markdown(f"""
-                                <div class="citation-box">
-                                    <div class="citation-text">
-                                        <span class="highlight">{citation}</span>
-                                        <span class="context">{trailing_text[len(citation):]}</span>
-                                    </div>
-                                </div>
-                            """, unsafe_allow_html=True)
-                        
-                        # Add CSS for citation styling
-                        st.markdown("""
-                            <style>
-                            .citation-box {
-                                background-color: #f8f9fa;
-                                border-left: 3px solid #6c757d;
-                                padding: 10px;
-                                margin: 5px 0;
-                                border-radius: 0 4px 4px 0;
-                            }
-                            
-                            .citation-text {
-                                color: #495057;
-                            }
-                            
-                            .highlight {
-                                background-color: #fff3cd;
-                                padding: 2px 4px;
-                                border-radius: 3px;
-                            }
-                            
-                            .context {
-                                color: #6c757d;
-                                font-style: italic;
-                            }
-                            </style>
+                        st.markdown(f"""
+                            <div class="citation-box">
+                                <i class="citation-text">{citation}</i>
+                            </div>
                         """, unsafe_allow_html=True)
                     
                     # Display AI-generated suggestions if score is 0
@@ -1992,51 +1910,10 @@ def display_evaluation(evaluation: Dict[str, Any]):
                     """, unsafe_allow_html=True)
                     
                     for citation in citations:
-                        # Find the citation index in the transcript
-                        transcript = evaluation.get("transcript", "")
-                        citation_index = transcript.find(citation)
-                        
-                        if citation_index >= 0:
-                            # Get trailing context (up to 100 characters or next sentence)
-                            trailing_text = transcript[citation_index:].split('.')[0][:100]
-                            if len(trailing_text) == 100:
-                                trailing_text += "..."
-                            
-                            st.markdown(f"""
-                                <div class="citation-box">
-                                    <div class="citation-text">
-                                        <span class="highlight">{citation}</span>
-                                        <span class="context">{trailing_text[len(citation):]}</span>
-                                    </div>
-                                </div>
-                            """, unsafe_allow_html=True)
-                        
-                        # Add CSS for citation styling
-                        st.markdown("""
-                            <style>
-                            .citation-box {
-                                background-color: #f8f9fa;
-                                border-left: 3px solid #6c757d;
-                                padding: 10px;
-                                margin: 5px 0;
-                                border-radius: 0 4px 4px 0;
-                            }
-                            
-                            .citation-text {
-                                color: #495057;
-                            }
-                            
-                            .highlight {
-                                background-color: #fff3cd;
-                                padding: 2px 4px;
-                                border-radius: 3px;
-                            }
-                            
-                            .context {
-                                color: #6c757d;
-                                font-style: italic;
-                            }
-                            </style>
+                        st.markdown(f"""
+                            <div class="citation-box">
+                                <i class="citation-text">{citation}</i>
+                            </div>
                         """, unsafe_allow_html=True)
                     
                     if score == 0:
