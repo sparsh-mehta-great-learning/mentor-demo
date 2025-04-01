@@ -1390,7 +1390,7 @@ class MentorEvaluator:
                 def load_model():
                     nonlocal model
                     try:
-                        model = whisper.load_model("medium")
+                        model = whisper.load_model("large")
                     except Exception as e:
                         logger.error(f"Error loading model: {e}")
                         raise
