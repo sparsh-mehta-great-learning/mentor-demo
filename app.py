@@ -1807,7 +1807,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
             st.header("Teaching Analysis")
             
             teaching_data = evaluation.get("teaching", {})
-            content_analyzer = ContentAnalyzer(st.secrets["OPENAI_API_KEY"])
+            content_analyzer = ContentAnalyzer()
             
             # Display Concept Assessment with enhanced citation context
             with st.expander("📚 Concept Assessment", expanded=True):
