@@ -27,6 +27,7 @@ import concurrent.futures
 import hashlib
 import threading
 import random
+import openai
 
 # Set up logging
 logging.basicConfig(
@@ -302,11 +303,22 @@ class AudioFeatureExtractor:
             "variations_per_minute": float((np.sum(np.diff(all_f0) != 0) if len(all_f0) > 1 else 0) / 
                                         (sum(f["duration"] for f in features) / 60))
         }
-
 class ContentAnalyzer:
     """Analyzes teaching content using OpenAI API"""
-    def __init__(self, api_key: str):
-        self.client = OpenAI(api_key=api_key)
+    def __init__(self):
+        # Access Azure OpenAI credentials from Streamlit secrets
+        self.api_key = st.secrets["AZURE_OPENAI_KEY"]
+        self.api_endpoint = st.secrets["AZURE_OPENAI_ENDPOINT"]
+        self.api_type = st.secrets["AZURE_OPENAI_APITYPE"]
+        self.api_version = st.secrets["AZURE_OPENAI_APIVERSION"]
+        self.model = st.secrets["CHATGPT_MODEL"]
+        
+        # Configure OpenAI client with Azure credentials
+        self.client = openai.AzureOpenAI(
+            api_key=self.api_key,
+            api_version=self.api_version,
+            azure_endpoint=self.api_endpoint
+        )
         self.retry_count = 3
         self.retry_delay = 1
         
@@ -1148,21 +1160,21 @@ class CostCalculator:
 class MentorEvaluator:
     """Main class for video evaluation"""
     def __init__(self, model_cache_dir: Optional[str] = None):
-        # Get OpenAI API key for Whisper
-        self.openai_api_key = st.secrets.get("OPENAI_API_KEY")
-        if not self.openai_api_key:
-            raise ValueError("OpenAI API key not found in secrets")
+        # Access Azure OpenAI credentials from Streamlit secrets
+        self.api_key = st.secrets["AZURE_OPENAI_KEY"]
+        self.api_endpoint = st.secrets["AZURE_OPENAI_ENDPOINT"]
+        self.api_type = st.secrets["AZURE_OPENAI_APITYPE"]
+        self.api_version = st.secrets["AZURE_OPENAI_APIVERSION"]
+        self.model = st.secrets["CHATGPT_MODEL"]
         
-        # Get Azure OpenAI configurations
-        self.azure_api_key = st.secrets.get("AZURE_OPENAI_KEY")
-        self.azure_endpoint = st.secrets.get("AZURE_OPENAI_ENDPOINT")
-        self.azure_api_type = st.secrets.get("AZURE_OPENAI_APITYPE")
-        self.azure_api_version = st.secrets.get("AZURE_OPENAI_APIVERSION")
-        self.chatgpt_model = st.secrets.get("CHATGPT_MODEL")
-
-        if not all([self.azure_api_key, self.azure_endpoint, self.azure_api_type, 
-                   self.azure_api_version, self.chatgpt_model]):
-            raise ValueError("One or more Azure OpenAI configurations missing in secrets")
+        # Configure OpenAI client with Azure credentials
+        self.client = openai.AzureOpenAI(
+            api_key=self.api_key,
+            api_version=self.api_version,
+            azure_endpoint=self.api_endpoint
+        )
+        
+        self.model_cache_dir = model_cache_dir
         
         # Add error handling for model cache directory
         try:
@@ -1178,18 +1190,18 @@ class MentorEvaluator:
         try:
             self.feature_extractor = AudioFeatureExtractor()
             self.content_analyzer = ContentAnalyzer(
-                api_key=self.azure_api_key,
-                endpoint=self.azure_endpoint,
-                api_type=self.azure_api_type,
-                api_version=self.azure_api_version,
-                model=self.chatgpt_model
+                api_key=self.api_key,
+                endpoint=self.api_endpoint,
+                api_type=self.api_type,
+                api_version=self.api_version,
+                model=self.model
             )
             self.recommendation_generator = RecommendationGenerator(
-                api_key=self.azure_api_key,
-                endpoint=self.azure_endpoint,
-                api_type=self.azure_api_type,
-                api_version=self.azure_api_version,
-                model=self.chatgpt_model
+                api_key=self.api_key,
+                endpoint=self.api_endpoint,
+                api_type=self.api_type,
+                api_version=self.api_version,
+                model=self.model
             )
             self.cost_calculator = CostCalculator()
         except Exception as e:
