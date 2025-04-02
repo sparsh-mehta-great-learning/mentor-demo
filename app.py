@@ -1148,10 +1148,21 @@ class CostCalculator:
 class MentorEvaluator:
     """Main class for video evaluation"""
     def __init__(self, model_cache_dir: Optional[str] = None):
-        # Fix potential API key issue
-        self.api_key = st.secrets.get("OPENAI_API_KEY")  # Use get() method
-        if not self.api_key:
+        # Get OpenAI API key for Whisper
+        self.openai_api_key = st.secrets.get("OPENAI_API_KEY")
+        if not self.openai_api_key:
             raise ValueError("OpenAI API key not found in secrets")
+        
+        # Get Azure OpenAI configurations
+        self.azure_api_key = st.secrets.get("AZURE_OPENAI_KEY")
+        self.azure_endpoint = st.secrets.get("AZURE_OPENAI_ENDPOINT")
+        self.azure_api_type = st.secrets.get("AZURE_OPENAI_APITYPE")
+        self.azure_api_version = st.secrets.get("AZURE_OPENAI_APIVERSION")
+        self.chatgpt_model = st.secrets.get("CHATGPT_MODEL")
+
+        if not all([self.azure_api_key, self.azure_endpoint, self.azure_api_type, 
+                   self.azure_api_version, self.chatgpt_model]):
+            raise ValueError("One or more Azure OpenAI configurations missing in secrets")
         
         # Add error handling for model cache directory
         try:
@@ -1166,8 +1177,20 @@ class MentorEvaluator:
         # Initialize components with proper error handling
         try:
             self.feature_extractor = AudioFeatureExtractor()
-            self.content_analyzer = ContentAnalyzer(self.api_key)
-            self.recommendation_generator = RecommendationGenerator(self.api_key)
+            self.content_analyzer = ContentAnalyzer(
+                api_key=self.azure_api_key,
+                endpoint=self.azure_endpoint,
+                api_type=self.azure_api_type,
+                api_version=self.azure_api_version,
+                model=self.chatgpt_model
+            )
+            self.recommendation_generator = RecommendationGenerator(
+                api_key=self.azure_api_key,
+                endpoint=self.azure_endpoint,
+                api_type=self.azure_api_type,
+                api_version=self.azure_api_version,
+                model=self.chatgpt_model
+            )
             self.cost_calculator = CostCalculator()
         except Exception as e:
             raise RuntimeError(f"Failed to initialize components: {e}")
