@@ -306,8 +306,9 @@ class AudioFeatureExtractor:
 
 class ContentAnalyzer:
     """Analyzes teaching content using OpenAI API"""
-    def __init__(self, api_key: str):
-        self.client = OpenAI(api_key=api_key)
+    def __init__(self, client):
+        """Initialize with an OpenAI client instance"""
+        self.client = client
         self.retry_count = 3
         self.retry_delay = 1
         
@@ -933,8 +934,9 @@ Score 0 if ANY of the following are present:
 
 class RecommendationGenerator:
     """Generates teaching recommendations using OpenAI API"""
-    def __init__(self, api_key: str):
-        self.client = OpenAI(api_key=api_key)
+    def __init__(self, client):
+        """Initialize with an OpenAI client instance"""
+        self.client = client
         self.retry_count = 3
         self.retry_delay = 1
         
