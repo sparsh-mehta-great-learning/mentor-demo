@@ -1160,52 +1160,9 @@ class CostCalculator:
 class MentorEvaluator:
     """Main class for video evaluation"""
     def __init__(self, model_cache_dir: Optional[str] = None):
-        # Access Azure OpenAI credentials from Streamlit secrets
-        self.api_key = st.secrets["AZURE_OPENAI_KEY"]
-        self.api_endpoint = st.secrets["AZURE_OPENAI_ENDPOINT"]
-        self.api_type = st.secrets["AZURE_OPENAI_APITYPE"]
-        self.api_version = st.secrets["AZURE_OPENAI_APIVERSION"]
-        self.model = st.secrets["CHATGPT_MODEL"]
-        
-        # Configure OpenAI client with Azure credentials
-        self.client = openai.AzureOpenAI(
-            api_key=self.api_key,
-            api_version=self.api_version,
-            azure_endpoint=self.api_endpoint
-        )
-        
-        self.model_cache_dir = model_cache_dir
-        
-        # Add error handling for model cache directory
-        try:
-            if model_cache_dir:
-                self.model_cache_dir = Path(model_cache_dir)
-            else:
-                self.model_cache_dir = Path.home() / ".cache" / "whisper"
-            self.model_cache_dir.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            raise RuntimeError(f"Failed to create model cache directory: {e}")
-            
-        # Initialize components with proper error handling
-        try:
-            self.feature_extractor = AudioFeatureExtractor()
-            self.content_analyzer = ContentAnalyzer(
-                api_key=self.api_key,
-                endpoint=self.api_endpoint,
-                api_type=self.api_type,
-                api_version=self.api_version,
-                model=self.model
-            )
-            self.recommendation_generator = RecommendationGenerator(
-                api_key=self.api_key,
-                endpoint=self.api_endpoint,
-                api_type=self.api_type,
-                api_version=self.api_version,
-                model=self.model
-            )
-            self.cost_calculator = CostCalculator()
-        except Exception as e:
-            raise RuntimeError(f"Failed to initialize components: {e}")
+        # Initialize ContentAnalyzer without api_key
+        self.content_analyzer = ContentAnalyzer()  # Remove any api_key parameter here
+        # ... rest of initialization code ...
 
     def _get_cached_result(self, key: str) -> Optional[Any]:
         """Get cached result if available and not expired"""
