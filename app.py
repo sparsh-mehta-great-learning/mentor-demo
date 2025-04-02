@@ -27,7 +27,6 @@ import concurrent.futures
 import hashlib
 import threading
 import random
-import openai
 
 # Set up logging
 logging.basicConfig(
@@ -303,22 +302,11 @@ class AudioFeatureExtractor:
             "variations_per_minute": float((np.sum(np.diff(all_f0) != 0) if len(all_f0) > 1 else 0) / 
                                         (sum(f["duration"] for f in features) / 60))
         }
+
 class ContentAnalyzer:
     """Analyzes teaching content using OpenAI API"""
-    def __init__(self):
-        # Access Azure OpenAI credentials from Streamlit secrets
-        self.api_key = st.secrets["AZURE_OPENAI_KEY"]
-        self.api_endpoint = st.secrets["AZURE_OPENAI_ENDPOINT"]
-        self.api_type = st.secrets["AZURE_OPENAI_APITYPE"]
-        self.api_version = st.secrets["AZURE_OPENAI_APIVERSION"]
-        self.model = st.secrets["CHATGPT_MODEL"]
-        
-        # Configure OpenAI client with Azure credentials
-        self.client = openai.AzureOpenAI(
-            api_key=self.api_key,
-            api_version=self.api_version,
-            azure_endpoint=self.api_endpoint
-        )
+    def __init__(self, api_key: str):
+        self.client = OpenAI(api_key=api_key)
         self.retry_count = 3
         self.retry_delay = 1
         
@@ -1160,9 +1148,29 @@ class CostCalculator:
 class MentorEvaluator:
     """Main class for video evaluation"""
     def __init__(self, model_cache_dir: Optional[str] = None):
-        # Initialize ContentAnalyzer without api_key
-        self.content_analyzer = ContentAnalyzer()  # Remove any api_key parameter here
-        # ... rest of initialization code ...
+        # Fix potential API key issue
+        self.api_key = st.secrets.get("OPENAI_API_KEY")  # Use get() method
+        if not self.api_key:
+            raise ValueError("OpenAI API key not found in secrets")
+        
+        # Add error handling for model cache directory
+        try:
+            if model_cache_dir:
+                self.model_cache_dir = Path(model_cache_dir)
+            else:
+                self.model_cache_dir = Path.home() / ".cache" / "whisper"
+            self.model_cache_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            raise RuntimeError(f"Failed to create model cache directory: {e}")
+            
+        # Initialize components with proper error handling
+        try:
+            self.feature_extractor = AudioFeatureExtractor()
+            self.content_analyzer = ContentAnalyzer(self.api_key)
+            self.recommendation_generator = RecommendationGenerator(self.api_key)
+            self.cost_calculator = CostCalculator()
+        except Exception as e:
+            raise RuntimeError(f"Failed to initialize components: {e}")
 
     def _get_cached_result(self, key: str) -> Optional[Any]:
         """Get cached result if available and not expired"""
@@ -1764,7 +1772,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
             st.header("Teaching Analysis")
             
             teaching_data = evaluation.get("teaching", {})
-            content_analyzer = ContentAnalyzer()
+            content_analyzer = ContentAnalyzer(st.secrets["OPENAI_API_KEY"])
             
             # Display Concept Assessment with enhanced citation context
             with st.expander("📚 Concept Assessment", expanded=True):
