@@ -306,7 +306,7 @@ class AudioFeatureExtractor:
 class ContentAnalyzer:
     """Analyzes teaching content using OpenAI API"""
     def __init__(self, api_key: str):
-        # Replace OpenAI with AzureOpenAI client
+        from openai import AzureOpenAI
         self.client = AzureOpenAI(
             api_key=st.secrets["AZURE_OPENAI_KEY"],
             api_version=st.secrets["AZURE_OPENAI_APIVERSION"],
@@ -420,6 +420,7 @@ class ContentAnalyzer:
                 try:
                     response = self.client.chat.completions.create(
                         deployment_id=st.secrets["AZURE_OPENAI_DEPLOYMENT"],
+                        model=st.secrets["AZURE_OPENAI_DEPLOYMENT"],  # Add model parameter
                         messages=[
                             {"role": "system", "content": """You are a strict teaching evaluator focusing on core teaching competencies.
                              For each assessment point, you MUST include specific timestamps [MM:SS] from the transcript.
@@ -807,6 +808,7 @@ Score 0 if ANY of the following are present:
             try:
                 response = self.client.chat.completions.create(
                     deployment_id=st.secrets["AZURE_OPENAI_DEPLOYMENT"],
+                    model=st.secrets["AZURE_OPENAI_DEPLOYMENT"],  # Add model parameter
                     messages=[
                         {"role": "system", "content": """Analyze the speech transcript for:
                         1. Filler words (um, uh, like, you know, etc.)
@@ -912,6 +914,7 @@ Score 0 if ANY of the following are present:
         try:
             response = self.client.chat.completions.create(
                 deployment_id=st.secrets["AZURE_OPENAI_DEPLOYMENT"],
+                model=st.secrets["AZURE_OPENAI_DEPLOYMENT"],  # Add model parameter
                 messages=[
                     {"role": "system", "content": """You are a teaching expert providing specific, actionable suggestions 
                     for improvement. Focus on the single most important, practical advice based on the teaching category 
@@ -938,7 +941,7 @@ Score 0 if ANY of the following are present:
 class RecommendationGenerator:
     """Generates teaching recommendations using OpenAI API"""
     def __init__(self, api_key: str):
-        # Replace OpenAI with AzureOpenAI client
+        from openai import AzureOpenAI
         self.client = AzureOpenAI(
             api_key=st.secrets["AZURE_OPENAI_KEY"],
             api_version=st.secrets["AZURE_OPENAI_APIVERSION"],
@@ -964,6 +967,7 @@ class RecommendationGenerator:
                 
                 response = self.client.chat.completions.create(
                     deployment_id=st.secrets["AZURE_OPENAI_DEPLOYMENT"],
+                    model=st.secrets["AZURE_OPENAI_DEPLOYMENT"],  # Add model parameter
                     messages=[
                         {"role": "system", "content": """You are a teaching expert providing actionable recommendations. 
                         Each improvement must be categorized as one of:
@@ -1158,10 +1162,14 @@ class CostCalculator:
 class MentorEvaluator:
     """Main class for video evaluation"""
     def __init__(self, model_cache_dir: Optional[str] = None):
-        # Fix potential API key issue
-        self.api_key = st.secrets.get("OPENAI_API_KEY")  # Use get() method
-        if not self.api_key:
-            raise ValueError("OpenAI API key not found in secrets")
+        from openai import AzureOpenAI
+        self.client = AzureOpenAI(
+            api_key=st.secrets["AZURE_OPENAI_KEY"],
+            api_version=st.secrets["AZURE_OPENAI_APIVERSION"],
+            azure_endpoint=st.secrets["AZURE_OPENAI_ENDPOINT"]
+        )
+        self.retry_count = 3
+        self.retry_delay = 1
         
         # Add error handling for model cache directory
         try:
@@ -1493,6 +1501,7 @@ class MentorEvaluator:
             try:
                 response = self.client.chat.completions.create(
                     deployment_id=st.secrets["AZURE_OPENAI_DEPLOYMENT"],
+                    model=st.secrets["AZURE_OPENAI_DEPLOYMENT"],  # Add model parameter
                     messages=[
                         {"role": "system", "content": """Analyze the speech transcript for:
                         1. Filler words (um, uh, like, you know, etc.)
