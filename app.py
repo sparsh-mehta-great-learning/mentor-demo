@@ -1163,13 +1163,20 @@ class MentorEvaluator:
     """Main class for video evaluation"""
     def __init__(self, model_cache_dir: Optional[str] = None):
         from openai import AzureOpenAI
+        # Initialize Azure OpenAI client
         self.client = AzureOpenAI(
             api_key=st.secrets["AZURE_OPENAI_KEY"],
             api_version=st.secrets["AZURE_OPENAI_APIVERSION"],
             azure_endpoint=st.secrets["AZURE_OPENAI_ENDPOINT"]
         )
-        self.retry_count = 3
-        self.retry_delay = 1
+        # Store API key for other components that might need it
+        self.api_key = st.secrets["AZURE_OPENAI_KEY"]
+        
+        # Initialize other components with the API key
+        self.content_analyzer = ContentAnalyzer(self.api_key)
+        self.recommendation_generator = RecommendationGenerator(self.api_key)
+        
+        self.model_cache_dir = model_cache_dir
         
         # Add error handling for model cache directory
         try:
@@ -1184,8 +1191,6 @@ class MentorEvaluator:
         # Initialize components with proper error handling
         try:
             self.feature_extractor = AudioFeatureExtractor()
-            self.content_analyzer = ContentAnalyzer(self.api_key)
-            self.recommendation_generator = RecommendationGenerator(self.api_key)
             self.cost_calculator = CostCalculator()
         except Exception as e:
             raise RuntimeError(f"Failed to initialize components: {e}")
