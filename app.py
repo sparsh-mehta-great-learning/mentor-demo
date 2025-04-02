@@ -27,7 +27,6 @@ import concurrent.futures
 import hashlib
 import threading
 import random
-from openai import AzureOpenAI
 
 # Set up logging
 logging.basicConfig(
@@ -306,9 +305,8 @@ class AudioFeatureExtractor:
 
 class ContentAnalyzer:
     """Analyzes teaching content using OpenAI API"""
-    def __init__(self, client):
-        """Initialize with an OpenAI client instance"""
-        self.client = client
+    def __init__(self, api_key: str):
+        self.client = OpenAI(api_key=api_key)
         self.retry_count = 3
         self.retry_delay = 1
         
@@ -934,9 +932,8 @@ Score 0 if ANY of the following are present:
 
 class RecommendationGenerator:
     """Generates teaching recommendations using OpenAI API"""
-    def __init__(self, client):
-        """Initialize with an OpenAI client instance"""
-        self.client = client
+    def __init__(self, api_key: str):
+        self.client = OpenAI(api_key=api_key)
         self.retry_count = 3
         self.retry_delay = 1
         
@@ -1151,24 +1148,10 @@ class CostCalculator:
 class MentorEvaluator:
     """Main class for video evaluation"""
     def __init__(self, model_cache_dir: Optional[str] = None):
-        # Set up Azure OpenAI client
-        azure_openai_key = st.secrets.get("AZURE_OPENAI_KEY")
-        azure_openai_endpoint = st.secrets.get("AZURE_OPENAI_ENDPOINT")
-        azure_openai_apiversion = st.secrets.get("AZURE_OPENAI_APIVERSION")
-        
-        # Set up OpenAI API key for Whisper
-        self.whisper_api_key = st.secrets.get("OPENAI_API_KEY")
-        
-        if not all([azure_openai_key, azure_openai_endpoint, azure_openai_apiversion]):
-            raise ValueError("Azure OpenAI credentials not found in secrets")
-        if not self.whisper_api_key:
-            raise ValueError("OpenAI API key for Whisper not found in secrets")
-            
-        self.client = AzureOpenAI(
-            api_key=azure_openai_key,
-            azure_endpoint=azure_openai_endpoint,
-            api_version=azure_openai_apiversion
-        )
+        # Fix potential API key issue
+        self.api_key = st.secrets.get("OPENAI_API_KEY")  # Use get() method
+        if not self.api_key:
+            raise ValueError("OpenAI API key not found in secrets")
         
         # Add error handling for model cache directory
         try:
@@ -1183,8 +1166,8 @@ class MentorEvaluator:
         # Initialize components with proper error handling
         try:
             self.feature_extractor = AudioFeatureExtractor()
-            self.content_analyzer = ContentAnalyzer(self.client)
-            self.recommendation_generator = RecommendationGenerator(self.client)
+            self.content_analyzer = ContentAnalyzer(self.api_key)
+            self.recommendation_generator = RecommendationGenerator(self.api_key)
             self.cost_calculator = CostCalculator()
         except Exception as e:
             raise RuntimeError(f"Failed to initialize components: {e}")
