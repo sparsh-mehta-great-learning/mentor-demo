@@ -4,7 +4,7 @@ import os
 import numpy as np
 import librosa
 import whisper
-from openai import OpenAI, AzureOpenAI
+from openai import OpenAI
 import tempfile
 import warnings
 import re
@@ -306,12 +306,7 @@ class AudioFeatureExtractor:
 class ContentAnalyzer:
     """Analyzes teaching content using OpenAI API"""
     def __init__(self, api_key: str):
-        from openai import AzureOpenAI
-        self.client = AzureOpenAI(
-            api_key=st.secrets["AZURE_OPENAI_KEY"],
-            api_version=st.secrets["AZURE_OPENAI_APIVERSION"],
-            azure_endpoint=st.secrets["AZURE_OPENAI_ENDPOINT"]
-        )
+        self.client = OpenAI(api_key=api_key)
         self.retry_count = 3
         self.retry_delay = 1
         
@@ -419,8 +414,7 @@ class ContentAnalyzer:
                 
                 try:
                     response = self.client.chat.completions.create(
-                        deployment_id=st.secrets["AZURE_OPENAI_DEPLOYMENT"],
-                        model=st.secrets["AZURE_OPENAI_DEPLOYMENT"],  # Add model parameter
+                        model="gpt-4o-mini",  # Using GPT-4 for better analysis
                         messages=[
                             {"role": "system", "content": """You are a strict teaching evaluator focusing on core teaching competencies.
                              For each assessment point, you MUST include specific timestamps [MM:SS] from the transcript.
@@ -807,8 +801,7 @@ Score 0 if ANY of the following are present:
             # Use LLM to detect fillers and errors
             try:
                 response = self.client.chat.completions.create(
-                    deployment_id=st.secrets["AZURE_OPENAI_DEPLOYMENT"],
-                    model=st.secrets["AZURE_OPENAI_DEPLOYMENT"],  # Add model parameter
+                    model="gpt-4o-mini",
                     messages=[
                         {"role": "system", "content": """Analyze the speech transcript for:
                         1. Filler words (um, uh, like, you know, etc.)
@@ -913,8 +906,7 @@ Score 0 if ANY of the following are present:
         """Generate contextual suggestions based on category and citations"""
         try:
             response = self.client.chat.completions.create(
-                deployment_id=st.secrets["AZURE_OPENAI_DEPLOYMENT"],
-                model=st.secrets["AZURE_OPENAI_DEPLOYMENT"],  # Add model parameter
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": """You are a teaching expert providing specific, actionable suggestions 
                     for improvement. Focus on the single most important, practical advice based on the teaching category 
@@ -941,12 +933,7 @@ Score 0 if ANY of the following are present:
 class RecommendationGenerator:
     """Generates teaching recommendations using OpenAI API"""
     def __init__(self, api_key: str):
-        from openai import AzureOpenAI
-        self.client = AzureOpenAI(
-            api_key=st.secrets["AZURE_OPENAI_KEY"],
-            api_version=st.secrets["AZURE_OPENAI_APIVERSION"],
-            azure_endpoint=st.secrets["AZURE_OPENAI_ENDPOINT"]
-        )
+        self.client = OpenAI(api_key=api_key)
         self.retry_count = 3
         self.retry_delay = 1
         
@@ -966,8 +953,7 @@ class RecommendationGenerator:
                     progress_callback(0.5, "Generating recommendations...")
                 
                 response = self.client.chat.completions.create(
-                    deployment_id=st.secrets["AZURE_OPENAI_DEPLOYMENT"],
-                    model=st.secrets["AZURE_OPENAI_DEPLOYMENT"],  # Add model parameter
+                    model="gpt-4o-mini",
                     messages=[
                         {"role": "system", "content": """You are a teaching expert providing actionable recommendations. 
                         Each improvement must be categorized as one of:
@@ -1162,21 +1148,10 @@ class CostCalculator:
 class MentorEvaluator:
     """Main class for video evaluation"""
     def __init__(self, model_cache_dir: Optional[str] = None):
-        from openai import AzureOpenAI
-        # Initialize Azure OpenAI client
-        self.client = AzureOpenAI(
-            api_key=st.secrets["AZURE_OPENAI_KEY"],
-            api_version=st.secrets["AZURE_OPENAI_APIVERSION"],
-            azure_endpoint=st.secrets["AZURE_OPENAI_ENDPOINT"]
-        )
-        # Store API key for other components that might need it
-        self.api_key = st.secrets["AZURE_OPENAI_KEY"]
-        
-        # Initialize other components with the API key
-        self.content_analyzer = ContentAnalyzer(self.api_key)
-        self.recommendation_generator = RecommendationGenerator(self.api_key)
-        
-        self.model_cache_dir = model_cache_dir
+        # Fix potential API key issue
+        self.api_key = st.secrets.get("OPENAI_API_KEY")  # Use get() method
+        if not self.api_key:
+            raise ValueError("OpenAI API key not found in secrets")
         
         # Add error handling for model cache directory
         try:
@@ -1191,6 +1166,8 @@ class MentorEvaluator:
         # Initialize components with proper error handling
         try:
             self.feature_extractor = AudioFeatureExtractor()
+            self.content_analyzer = ContentAnalyzer(self.api_key)
+            self.recommendation_generator = RecommendationGenerator(self.api_key)
             self.cost_calculator = CostCalculator()
         except Exception as e:
             raise RuntimeError(f"Failed to initialize components: {e}")
@@ -1505,8 +1482,7 @@ class MentorEvaluator:
             # Use LLM to detect fillers and errors
             try:
                 response = self.client.chat.completions.create(
-                    deployment_id=st.secrets["AZURE_OPENAI_DEPLOYMENT"],
-                    model=st.secrets["AZURE_OPENAI_DEPLOYMENT"],  # Add model parameter
+                    model="gpt-4o-mini",
                     messages=[
                         {"role": "system", "content": """Analyze the speech transcript for:
                         1. Filler words (um, uh, like, you know, etc.)
@@ -3344,4 +3320,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
     
