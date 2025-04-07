@@ -851,7 +851,7 @@ Score 0 if ANY of the following are present:
             
             return {
                 "speed": {
-                    "score": 1 if 120 <= words_per_minute <= 180 else 0,
+                    "score": 1 if 120 <= words_per_minute <= 160 else 0,
                     "wpm": words_per_minute,
                     "total_words": words,
                     "duration_minutes": duration_minutes
@@ -1628,7 +1628,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
             
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Score", "✅ Pass" if 120 <= words_per_minute <= 180 else "❌ Needs Improvement")
+                st.metric("Score", "✅ Pass" if 120 <= words_per_minute <= 160 else "❌ Needs Improvement")
                 st.metric("Words per Minute", f"{words_per_minute:.1f}")
             with col2:
                 st.info("""
