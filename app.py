@@ -1532,7 +1532,7 @@ class MentorEvaluator:
             
             return {
                 "speed": {
-                    "score": 1 if 120 <= words_per_minute <= 180 else 0,
+                    "score": 1 if 120 <= words_per_minute <= 160 else 0,
                     "wpm": words_per_minute,
                     "total_words": words,
                     "duration_minutes": duration_minutes
@@ -1632,7 +1632,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
                 st.metric("Words per Minute", f"{words_per_minute:.1f}")
             with col2:
                 st.info("""
-                **Acceptable Range:** 120-180 WPM
+                **Acceptable Range:** 120-160 WPM
                 - Optimal teaching pace: 130-160 WPM
                 """)
 
