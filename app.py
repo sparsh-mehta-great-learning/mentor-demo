@@ -581,7 +581,7 @@ Required JSON response format:
         }},
         "Engagement and Interaction": {{
             "Score": 0 or 1,
-            "Citations": ["[MM:SS] Exact quote showing evidence of question handling"],
+            "Citations": ["[MM:SS] Exact quote showing evidence"],
             "QuestionConfidence": {{
                 "Score": 0 or 1,
                 "Citations": ["[MM:SS] Exact quote showing evidence of question handling"]
@@ -1033,13 +1033,6 @@ Content Analysis: {json.dumps(content_analysis)}
 
 Analyze the teaching style and provide:
 1. A concise performance summary (2-3 paragraphs highlighting key strengths and areas for improvement)
-   - Include analysis of nervousness indicators:
-     * High frequency of filler words (>3/min)
-     * Speech errors (>1/min)
-     * Unnatural pauses (>12/min)
-     * Monotone speech (score >0.4)
-     * Unusual pitch patterns (outside 20-40% variation)
-     * Voice energy levels (amplitude outside 60-75 range)
 2. Geography fit assessment
 3. Specific improvements needed (each must be categorized as COMMUNICATION, TEACHING, or TECHNICAL)
 4. Profile matching for different learner types (choose ONLY ONE best match)
@@ -1101,8 +1094,7 @@ Consider:
 - Use of examples and analogies
 - Engagement style and question handling confidence
 - Communication metrics
-- Teaching assessment scores
-- Nervousness indicators and their impact on teaching effectiveness"""
+- Teaching assessment scores"""
 
 class CostCalculator:
     """Calculates API and processing costs"""
@@ -2191,53 +2183,6 @@ def display_evaluation(evaluation: Dict[str, Any]):
                 st.markdown(recommendations["summary"])
                 st.markdown("</div></div>", unsafe_allow_html=True)
             
-            # Add Nervousness Analysis Section
-            st.markdown("""
-                <div class="nervousness-card">
-                    <h4>😰 Nervousness Analysis</h4>
-                    <div class="nervousness-content">
-            """, unsafe_allow_html=True)
-            
-            # Get speech metrics
-            speech_metrics = evaluation.get("speech_metrics", {})
-            fluency_data = speech_metrics.get("fluency", {})
-            flow_data = speech_metrics.get("flow", {})
-            intonation_data = speech_metrics.get("intonation", {})
-            energy_data = speech_metrics.get("energy", {})
-            
-            # Calculate nervousness indicators
-            fillers_per_minute = float(fluency_data.get("fillersPerMin", 0))
-            errors_per_minute = float(fluency_data.get("errorsPerMin", 0))
-            pauses_per_minute = float(flow_data.get("pausesPerMin", 0))
-            monotone_score = float(intonation_data.get("monotoneScore", 0))
-            pitch_variation = float(intonation_data.get("pitchVariation", 0))
-            mean_amplitude = float(energy_data.get("meanAmplitude", 0))
-            
-            # Create nervousness indicators
-            nervousness_indicators = []
-            
-            if fillers_per_minute > 3:
-                nervousness_indicators.append(f"High frequency of filler words ({fillers_per_minute:.1f}/min)")
-            if errors_per_minute > 1:
-                nervousness_indicators.append(f"Elevated speech errors ({errors_per_minute:.1f}/min)")
-            if pauses_per_minute > 12:
-                nervousness_indicators.append(f"Unnatural pauses ({pauses_per_minute:.1f}/min)")
-            if monotone_score > 0.4:
-                nervousness_indicators.append(f"Monotone speech pattern (score: {monotone_score:.2f})")
-            if pitch_variation < 20 or pitch_variation > 40:
-                nervousness_indicators.append(f"Unusual pitch variation ({pitch_variation:.1f}%)")
-            if mean_amplitude < 60 or mean_amplitude > 75:
-                nervousness_indicators.append(f"Voice energy level outside optimal range ({mean_amplitude:.1f})")
-            
-            if nervousness_indicators:
-                st.warning("⚠️ Nervousness Indicators Detected:")
-                for indicator in nervousness_indicators:
-                    st.markdown(f"- {indicator}")
-            else:
-                st.success("✅ No significant nervousness indicators detected")
-            
-            st.markdown("</div></div>", unsafe_allow_html=True)
-            
             # Display improvements using categories from content analysis
             st.markdown("<h4>💡 Areas for Improvement</h4>", unsafe_allow_html=True)
             improvements = recommendations.get("improvements", [])
@@ -2376,54 +2321,6 @@ def display_evaluation(evaluation: Dict[str, Any]):
                 
                 .improvement-item:last-child {
                     border-bottom: none;
-                }
-                
-                .nervousness-card {
-                    background: linear-gradient(135deg, #fff5f5 0%, #ffffff 100%);
-                    border-radius: 8px;
-                    padding: 20px;
-                    margin: 15px 0;
-                    border-left: 4px solid #dc3545;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }
-                
-                .nervousness-content {
-                    margin-top: 15px;
-                }
-                
-                .nervousness-content ul {
-                    list-style-type: none;
-                    padding-left: 0;
-                }
-                
-                .nervousness-content li {
-                    margin-bottom: 10px;
-                    padding-left: 15px;
-                    border-left: 2px solid #dc3545;
-                }
-                
-                .nervousness-content li:hover {
-                    background-color: #fff5f5;
-                    transform: translateX(5px);
-                    transition: all 0.2s ease;
-                }
-                
-                .nervousness-indicator {
-                    display: inline-block;
-                    padding: 4px 12px;
-                    border-radius: 15px;
-                    font-size: 0.9em;
-                    margin: 5px;
-                    background-color: #fff5f5;
-                    color: #dc3545;
-                    border: 1px solid #dc3545;
-                }
-                
-                .nervousness-indicator:hover {
-                    background-color: #dc3545;
-                    color: white;
-                    transform: translateY(-2px);
-                    transition: all 0.2s ease;
                 }
                 </style>
             """, unsafe_allow_html=True)
