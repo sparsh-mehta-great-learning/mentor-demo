@@ -438,6 +438,8 @@ class ContentAnalyzer:
                     raise
                 
                 result_text = response.choices[0].message.content.strip()
+                # Remove markdown code block markers if present
+                result_text = result_text.replace('```json\n', '').replace('\n```', '')
                 logger.info(f"Raw API response: {result_text[:500]}...")
                 
                 try:
@@ -1160,6 +1162,9 @@ class MentorEvaluator:
         self.api_key = st.secrets.get("OPENAI_API_KEY")  # Use get() method
         if not self.api_key:
             raise ValueError("OpenAI API key not found in secrets")
+        
+        # Initialize OpenAI client
+        self.client = OpenAI(api_key=self.api_key)  # Add this line
         
         # Add error handling for model cache directory
         try:
