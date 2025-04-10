@@ -27,6 +27,11 @@ import concurrent.futures
 import hashlib
 import threading
 import random
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle, TA_CENTER, TA_LEFT
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from io import BytesIO
 
 # Set up logging
 logging.basicConfig(
@@ -1548,7 +1553,7 @@ class MentorEvaluator:
                     "score": 1 if 120 <= words_per_minute <= 160 else 0,
                     "wpm": words_per_minute,
                     "total_words": words,
-                    "duration_minutes": duration_minutes
+                    "durat  ion_minutes": duration_minutes
                 },
                 "fluency": {
                     "score": fluency_score,
@@ -2774,118 +2779,324 @@ def check_dependencies() -> List[str]:
     return missing
 
 def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
-    """Generate a formatted PDF report from evaluation data"""
+    """Generate a more visually appealing and comprehensive PDF report."""
     try:
-        from reportlab.lib import colors
-        from reportlab.lib.pagesizes import letter
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-        from io import BytesIO
-        
-        # Create PDF buffer
         buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter)
+        doc = SimpleDocTemplate(buffer, pagesize=letter,
+                                leftMargin=72, rightMargin=72,
+                                topMargin=72, bottomMargin=72)
         styles = getSampleStyleSheet()
         story = []
-        
-        # Title
+
+        # --- Define Styles ---
         title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=24,
-            spaceAfter=30
+            'ReportTitle',
+            parent=styles['h1'],
+            fontSize=22,
+            alignment=TA_CENTER,
+            spaceAfter=20,
+            textColor=colors.HexColor('#2c3e50')
         )
+        heading1_style = ParagraphStyle(
+            'SectionHeading',
+            parent=styles['h2'],
+            fontSize=16,
+            spaceAfter=10,
+            spaceBefore=12,
+            textColor=colors.HexColor('#1f77b4'),
+            borderPadding=5,
+        )
+        heading2_style = ParagraphStyle(
+            'SubHeading',
+            parent=styles['h3'],
+            fontSize=13,
+            spaceAfter=8,
+            spaceBefore=8,
+            textColor=colors.HexColor('#34495e')
+        )
+        body_style = ParagraphStyle(
+            'BodyText',
+            parent=styles['Normal'],
+            fontSize=10,
+            leading=14,
+            alignment=TA_LEFT
+        )
+        citation_style = ParagraphStyle(
+            'CitationText',
+            parent=styles['Normal'],
+            fontSize=9,
+            leading=12,
+            textColor=colors.dimgray,
+            leftIndent=15
+        )
+        table_header_style = ParagraphStyle(
+            'TableHeader',
+            parent=styles['Normal'],
+            fontSize=10,
+            textColor=colors.whitesmoke,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        )
+        table_body_style = ParagraphStyle(
+            'TableBody',
+            parent=styles['Normal'],
+            fontSize=9,
+            alignment=TA_LEFT
+        )
+        table_body_centered_style = ParagraphStyle(
+            'TableBodyCentered',
+            parent=table_body_style,
+            alignment=TA_CENTER
+        )
+        score_pass_style = ParagraphStyle(
+             'ScorePass', parent=table_body_centered_style, textColor=colors.darkgreen, fontName='Helvetica-Bold'
+        )
+        score_fail_style = ParagraphStyle(
+             'ScoreFail', parent=table_body_centered_style, textColor=colors.red, fontName='Helvetica-Bold'
+        )
+
+        # --- Helper Functions for PDF Generation ---
+        def create_metric_table(title: str, data: Dict[str, Any], metric_keys: list, value_format: str = "{:.2f}"):
+            """Creates a styled table for simple key-value metrics."""
+            if not data:
+                return [Paragraph(f"{title}: Data not available", body_style)]
+
+            table_data = [[Paragraph(title, heading2_style), None]] # Span title across columns
+            table_data.append([Paragraph('Metric', table_header_style), Paragraph('Value', table_header_style)])
+
+            for key in metric_keys:
+                raw_value = data.get(key, 'N/A')
+                value_str = 'N/A'
+                if isinstance(raw_value, (int, float)):
+                    try:
+                        value_str = value_format.format(raw_value)
+                    except (ValueError, TypeError):
+                        value_str = str(raw_value) # Fallback
+                elif raw_value is not None:
+                    value_str = str(raw_value)
+
+                metric_name = key.replace('_', ' ').replace('PerMin', '/Min').title()
+                table_data.append([
+                    Paragraph(metric_name, table_body_style),
+                    Paragraph(value_str, table_body_centered_style)
+                ])
+
+            if len(table_data) <= 2: # Only title and header rows
+                 return [Paragraph(f"{title}: No relevant data found", body_style)]
+
+            table = Table(table_data, colWidths=[200, 100])
+            style = TableStyle([
+                ('SPAN', (0, 0), (1, 0)), # Span title
+                ('BACKGROUND', (0, 1), (1, 1), colors.HexColor('#4a69bd')), # Header background
+                ('TEXTCOLOR', (0, 1), (1, 1), colors.whitesmoke),
+                ('ALIGN', (0, 1), (1, 1), 'CENTER'),
+                ('FONTNAME', (0, 1), (1, 1), 'Helvetica-Bold'),
+                ('BOTTOMPADDING', (0, 1), (1, 1), 8),
+                ('GRID', (0, 1), (-1, -1), 0.5, colors.grey),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                # Alternating row colors
+                ('ROWBACKGROUNDS', (0, 2), (-1, -1), [colors.whitesmoke, colors.white])
+            ])
+            table.setStyle(style)
+            return [table, Spacer(1, 15)]
+
+        def create_analysis_table(title: str, data: Dict[str, Any]):
+            """Creates a styled table for analysis categories with scores and citations."""
+            if not data:
+                 return [Paragraph(f"{title}: Data not available", body_style)]
+
+            elements = [Paragraph(title, heading2_style)]
+            for category, details in data.items():
+                if not isinstance(details, dict): continue # Skip if data is not a dictionary
+
+                score = details.get("Score", None)
+                citations = details.get("Citations", [])
+
+                score_text = "N/A"
+                score_style = table_body_centered_style
+                if score == 1:
+                    score_text = "Pass"
+                    score_style = score_pass_style
+                elif score == 0:
+                    score_text = "Needs Work"
+                    score_style = score_fail_style
+
+                # Table for category score
+                cat_table_data = [
+                    [Paragraph(category.replace('_', ' ').title(), table_header_style), Paragraph('Score', table_header_style)],
+                    [Paragraph(category.replace('_', ' ').title(), table_body_style), Paragraph(score_text, score_style)]
+                 ]
+                cat_table = Table(cat_table_data, colWidths=[300, 100])
+                cat_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4a69bd')),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.white) # Body background
+                ]))
+                elements.append(cat_table)
+
+                # Add citations if present
+                if citations:
+                    elements.append(Paragraph("Supporting Evidence:", citation_style))
+                    for citation in citations:
+                        elements.append(Paragraph(f"• {citation}", citation_style))
+
+                # Handle nested 'Details' structure for Question Handling
+                if "Details" in details and isinstance(details["Details"], dict):
+                    elements.append(Paragraph("Detailed Assessment:", heading2_style))
+                    nested_elements = create_analysis_table("", details["Details"]) # Recursive call for details
+                    elements.extend(nested_elements) # Add nested elements
+
+                elements.append(Spacer(1, 10))
+
+            return elements
+
+
+        def create_recommendation_section(title: str, content: Any):
+            """Creates a section for recommendations or summary."""
+            elements = [Paragraph(title, heading2_style)]
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict):
+                         # Handle new categorized format
+                         category = item.get("category", "General")
+                         message = item.get("message", str(item))
+                         elements.append(Paragraph(f"• <b>[{category}]</b> {message}", body_style))
+                    else:
+                         # Handle old string format
+                         elements.append(Paragraph(f"• {item}", body_style)) # Simple bullet point
+            elif isinstance(content, str):
+                elements.append(Paragraph(content, body_style))
+            else:
+                 elements.append(Paragraph("N/A", body_style))
+            elements.append(Spacer(1, 15))
+            return elements
+
+        # --- Build PDF Story ---
         story.append(Paragraph("Mentor Demo Evaluation Report", title_style))
         story.append(Spacer(1, 20))
-        
-        # Communication Metrics Section
-        story.append(Paragraph("Communication Metrics", styles['Heading2']))
-        comm_metrics = evaluation_data.get("communication", {})
-        
-        # Create tables for each metric category
-        for category in ["speed", "fluency", "flow", "intonation", "energy"]:
-            if category in comm_metrics:
-                metrics = comm_metrics[category]
-                story.append(Paragraph(category.title(), styles['Heading3']))
-                
-                data = [[k.replace('_', ' ').title(), str(v)] for k, v in metrics.items()]
-                t = Table(data, colWidths=[200, 200])
-                t.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 0), (-1, 0), 14),
-                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                    ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-                    ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                    ('FONTSIZE', (0, 1), (-1, -1), 12),
-                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
-                ]))
-                story.append(t)
-                story.append(Spacer(1, 20))
-        
-        # Teaching Analysis Section
-        story.append(Paragraph("Teaching Analysis", styles['Heading2']))
+
+        # --- Communication Metrics ---
+        story.append(Paragraph("Communication Metrics", heading1_style))
+        speech_metrics = evaluation_data.get("speech_metrics", {})
+
+        # Speed
+        speed_data = speech_metrics.get("speed", {})
+        story.extend(create_metric_table(
+            "Speed", speed_data, ['wpm', 'total_words', 'duration_minutes']
+        ))
+
+        # Fluency
+        fluency_data = speech_metrics.get("fluency", {})
+        story.extend(create_metric_table(
+             "Fluency", fluency_data, ['errorsPerMin', 'fillersPerMin']
+        ))
+        # Add detected fillers/errors details if available
+        if fluency_data:
+             fillers = fluency_data.get("detectedFillers", [])
+             errors = fluency_data.get("detectedErrors", [])
+             if fillers:
+                  story.append(Paragraph("Detected Fillers:", heading2_style))
+                  for f in fillers:
+                       story.append(Paragraph(f"- {f.get('word', 'N/A')}: {f.get('count', 'N/A')}", body_style))
+                  story.append(Spacer(1, 5))
+             if errors:
+                  story.append(Paragraph("Detected Errors:", heading2_style))
+                  for e in errors:
+                        story.append(Paragraph(f"- {e.get('type', 'N/A')} (Count: {e.get('count', 'N/A')}): {e.get('context', '')}", body_style))
+                  story.append(Spacer(1, 10))
+
+
+        # Flow
+        flow_data = speech_metrics.get("flow", {})
+        story.extend(create_metric_table("Flow", flow_data, ['pausesPerMin']))
+
+        # Intonation & Energy (Combining audio features and speech metrics)
+        audio_features = evaluation_data.get("audio_features", {})
+        intonation_data = speech_metrics.get("intonation", {})
+        energy_data = speech_metrics.get("energy", {})
+
+        # Intonation Table
+        intonation_display_data = {
+             "Monotone Score": audio_features.get("monotone_score"),
+             "Pitch Mean (Hz)": audio_features.get("pitch_mean"),
+             "Pitch Variation Coeff (%)": audio_features.get("pitch_variation_coeff"),
+             "Direction Changes/Min": audio_features.get("direction_changes_per_min"),
+        }
+        story.extend(create_metric_table("Intonation", intonation_display_data, list(intonation_display_data.keys())))
+
+        # Energy Table
+        energy_display_data = {
+             "Mean Amplitude": audio_features.get("mean_amplitude"),
+             "Amplitude Deviation": audio_features.get("amplitude_deviation"),
+        }
+        story.extend(create_metric_table("Energy", energy_display_data, list(energy_display_data.keys())))
+
+        story.append(Spacer(1, 15))
+
+        # --- Teaching Analysis ---
+        story.append(Paragraph("Teaching Analysis", heading1_style))
         teaching_data = evaluation_data.get("teaching", {})
-        
-        for assessment_type in ["Concept Assessment", "Code Assessment"]:
-            if assessment_type in teaching_data:
-                story.append(Paragraph(assessment_type, styles['Heading3']))
-                categories = teaching_data[assessment_type]
-                
-                for category, details in categories.items():
-                    score = details.get("Score", 0)
-                    citations = details.get("Citations", [])
-                    
-                    data = [
-                        [category, "Score: " + ("Pass" if score == 1 else "Needs Improvement")],
-                        ["Citations:", ""]
-                    ] + [["-", citation] for citation in citations]
-                    
-                    t = Table(data, colWidths=[200, 300])
-                    t.setStyle(TableStyle([
-                        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                        ('GRID', (0, 0), (-1, -1), 1, colors.black)
-                    ]))
-                    story.append(t)
-                    story.append(Spacer(1, 20))
-        
-        # Recommendations Section
-        story.append(Paragraph("Recommendations", styles['Heading2']))
+
+        # Concept Assessment
+        concept_assessment_data = teaching_data.get("Concept Assessment", {})
+        story.extend(create_analysis_table("Concept Assessment", concept_assessment_data))
+
+        # Code Assessment
+        code_assessment_data = teaching_data.get("Code Assessment", {})
+        story.extend(create_analysis_table("Code Assessment", code_assessment_data))
+
+        story.append(Spacer(1, 15))
+
+        # --- Recommendations & Summary ---
+        story.append(Paragraph("Recommendations & Summary", heading1_style))
         recommendations = evaluation_data.get("recommendations", {})
-        
-        if "summary" in recommendations:
-            story.append(Paragraph("Overall Summary:", styles['Heading3']))
-            story.append(Paragraph(recommendations["summary"], styles['Normal']))
-            story.append(Spacer(1, 20))
-        
-        if "improvements" in recommendations:
-            story.append(Paragraph("Areas for Improvement:", styles['Heading3']))
-            improvements = recommendations["improvements"]
-            for improvement in improvements:
-                # Handle both string and dictionary improvement formats
-                if isinstance(improvement, dict):
-                    message = improvement.get("message", "")
-                    category = improvement.get("category", "")
-                    story.append(Paragraph(f"• [{category}] {message}", styles['Normal']))
-                else:
-                    story.append(Paragraph(f"• {improvement}", styles['Normal']))
-        
-        # Build PDF
+
+        # Summary
+        summary = recommendations.get("summary", "N/A")
+        story.extend(create_recommendation_section("Overall Summary", summary))
+
+        # Improvements
+        improvements = recommendations.get("improvements", [])
+        story.extend(create_recommendation_section("Areas for Improvement", improvements))
+
+        # Question Handling Specific Recommendations (if available)
+        question_handling_rec = recommendations.get("questionHandling", {})
+        if question_handling_rec:
+             story.append(Paragraph("Question Handling Feedback:", heading2_style))
+             q_confidence = question_handling_rec.get('confidence', 'N/A')
+             q_accuracy = question_handling_rec.get('accuracy', 'N/A')
+             q_improvements = question_handling_rec.get('improvements', [])
+             story.append(Paragraph(f"<b>Confidence:</b> {q_confidence}", body_style))
+             story.append(Paragraph(f"<b>Accuracy:</b> {q_accuracy}", body_style))
+             if q_improvements:
+                  story.append(Paragraph("<b>Improvements:</b>", body_style))
+                  for imp in q_improvements:
+                       story.append(Paragraph(f"- {imp}", body_style))
+             story.append(Spacer(1, 15))
+
+
+        # Rigor and Fit
+        rigor = recommendations.get("rigor", "N/A")
+        fit = recommendations.get("geographyFit", "N/A")
+        story.append(Paragraph(f"Teaching Rigor Assessment: {rigor}", body_style))
+        story.append(Paragraph(f"Geography Fit Assessment: {fit}", body_style))
+        story.append(Spacer(1, 15))
+
+        # --- Build PDF ---
         doc.build(story)
         pdf_data = buffer.getvalue()
         buffer.close()
-        
+        logger.info("PDF report generated successfully.")
         return pdf_data
-        
+
+    except ImportError:
+         logger.error("Reportlab not installed. Cannot generate PDF.")
+         raise RuntimeError("PDF generation requires 'reportlab' library. Please install it (`pip install reportlab`).")
     except Exception as e:
-        logger.error(f"Error generating PDF report: {e}")
-        raise RuntimeError(f"Failed to generate PDF report: {str(e)}")
+        logger.error(f"Error generating PDF report: {e}", exc_info=True) # Log traceback
+        # Provide a more informative error message
+        raise RuntimeError(f"Failed to generate PDF report: {str(e)}. Check logs for details.")
 
 def keep_device_active():
     """Keep the device active by periodically writing to the log"""
