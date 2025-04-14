@@ -309,12 +309,34 @@ class AudioFeatureExtractor:
         }
 
 class AccentClassifier:
-    """Handles accent classification using Hugging Face models"""
+    """Handles accent classification using SpeechBrain"""
     def __init__(self):
         try:
-            from transformers import pipeline
-            self.classifier = pipeline("audio-classification", 
-                                    model="Jzuluaga/accent-id-commonaccent_xlsr-en-english")
+            from speechbrain.pretrained.interfaces import foreign_class
+            
+            # Initialize the SpeechBrain classifier
+            self.classifier = foreign_class(
+                source="Jzuluaga/accent-id-commonaccent_xlsr-en-english",
+                pymodule_file="custom_interface.py",
+                classname="CustomEncoderWav2vec2Classifier"
+            )
+            
+            # Define accent mapping for better readability
+            self.accent_mapping = {
+                "arabic": "Arabic English",
+                "english": "British English",
+                "french": "French English",
+                "german": "German English",
+                "hindi": "Indian English",
+                "italian": "Italian English",
+                "japanese": "Japanese English",
+                "korean": "Korean English",
+                "mandarin": "Mandarin English",
+                "russian": "Russian English",
+                "spanish": "Spanish English",
+                "vietnamese": "Vietnamese English"
+            }
+            
         except Exception as e:
             logger.error(f"Failed to initialize accent classifier: {e}")
             self.classifier = None
@@ -329,24 +351,31 @@ class AccentClassifier:
                     "accent_scores": []
                 }
                 
-            # Run classification
-            results = self.classifier(audio_path)
+            # Run classification using SpeechBrain
+            # The classify_file method returns a tuple of (scores, predictions)
+            scores, predictions = self.classifier.classify_file(audio_path)
             
-            # Get top result
-            top_result = max(results, key=lambda x: x['score'])
+            # Convert torch tensors to numpy arrays for easier handling
+            scores = scores.squeeze().numpy()
+            predictions = predictions.squeeze().numpy()
             
-            # Format accent scores
-            accent_scores = [
-                {
-                    "accent": result['label'],
-                    "confidence": float(result['score'])
-                }
-                for result in results
-            ]
+            # Get all accent scores
+            accent_scores = []
+            for idx, score in enumerate(scores):
+                label = self.classifier.hparams.label_encoder.decode_ndim(predictions[idx])
+                accent = self.accent_mapping.get(label.lower(), label)
+                accent_scores.append({
+                    "accent": accent,
+                    "confidence": float(score)
+                })
+            
+            # Sort by confidence and get top result
+            accent_scores.sort(key=lambda x: x['confidence'], reverse=True)
+            top_result = accent_scores[0]
             
             return {
-                "accent": top_result['label'],
-                "confidence": float(top_result['score']),
+                "accent": top_result['accent'],
+                "confidence": top_result['confidence'],
                 "accent_scores": accent_scores
             }
             
