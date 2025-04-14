@@ -43,19 +43,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Suppress specific warnings
+# Suppress all streamlit and ScriptRunContext related warnings
 logging.getLogger('streamlit').setLevel(logging.ERROR)
-warnings.filterwarnings('ignore', message='.*missing ScriptRunContext.*')
+warnings.filterwarnings('ignore', message='.*missing ScriptRunContext.*', category=Warning)
+warnings.filterwarnings('ignore', message='.*ScriptRunContext.*', category=Warning)
 
-# Suppress all Thread warnings
-logging.getLogger('Thread').setLevel(logging.ERROR)
-logging.getLogger('Thread-1').setLevel(logging.ERROR)
-logging.getLogger('Thread-3').setLevel(logging.ERROR)  # Added Thread-3
-logging.getLogger('Thread-*').setLevel(logging.ERROR)
+# Create a filter to remove all ScriptRunContext related logs
+class ScriptContextFilter(logging.Filter):
+    def filter(self, record):
+        return 'ScriptRunContext' not in str(record.msg)
 
-# More comprehensive thread warning suppression
+# Apply filter to root logger and all existing handlers
+logging.root.addFilter(ScriptContextFilter())
 for handler in logging.root.handlers:
-    handler.addFilter(lambda record: not (record.threadName.startswith('Thread-') and 'ScriptRunContext' in str(record.msg)))
+    handler.addFilter(ScriptContextFilter())
+
+# Set all thread loggers to ERROR level
+for name in logging.root.manager.loggerDict:
+    if name.startswith('Thread'):
+        logging.getLogger(name).setLevel(logging.ERROR)
 
 # After imports but before class definitions
 def check_dependencies() -> List[str]:
