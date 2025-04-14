@@ -322,11 +322,12 @@ class AccentClassifier:
             # Import from speechbrain.inference instead of speechbrain.pretrained
             from speechbrain.inference.interfaces import foreign_class
             
-            # Initialize the SpeechBrain classifier with updated path
+            # Initialize the classifier with the correct source and interface
             self.classifier = foreign_class(
                 source="Jzuluaga/accent-id-commonaccent_xlsr-en-english",
-                pymodule_file="custom_interface.py",
-                classname="CustomEncoderClassifier"  # Updated classname
+                pymodule_file="custom_interface.py",  # This will be downloaded from the HF repo
+                classname="CustomEncoderWav2vec2Classifier",
+                savedir="pretrained_models/accent_classifier"
             )
             
             # Define accent mapping for better readability
