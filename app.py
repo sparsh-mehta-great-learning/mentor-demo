@@ -47,6 +47,29 @@ logger = logging.getLogger(__name__)
 logging.getLogger('streamlit').setLevel(logging.ERROR)
 warnings.filterwarnings('ignore', message='.*missing ScriptRunContext.*')
 
+# After imports but before class definitions
+def check_dependencies() -> List[str]:
+    """Check if required system dependencies are installed.
+    
+    Returns:
+        List[str]: List of missing dependencies
+    """
+    missing_deps = []
+    
+    # Check FFmpeg
+    try:
+        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        missing_deps.append('ffmpeg')
+    
+    # Check FFprobe
+    try:
+        subprocess.run(['ffprobe', '-version'], capture_output=True, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        missing_deps.append('ffprobe')
+        
+    return missing_deps
+
 class AudioProcessingError(Exception):
     """Custom exception for audio processing errors"""
     pass
