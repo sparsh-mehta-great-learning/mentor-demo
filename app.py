@@ -32,6 +32,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle, TA_CENTER, TA_LEFT
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from io import BytesIO
+import asyncio
 
 # Set up logging
 logging.basicConfig(
@@ -312,7 +313,7 @@ class AccentClassifier:
     """Handles accent classification using SpeechBrain"""
     def __init__(self):
         try:
-            from speechbrain.pretrained.interfaces import foreign_class
+            from speechbrain.inference import foreign_class  # Changed from pretrained to inference
             
             # Initialize the SpeechBrain classifier
             self.classifier = foreign_class(
@@ -3629,8 +3630,8 @@ def main():
                         # Create a background thread to update the timer
                         def update_timer(timer_container):
                             try:
-                                while st.session_state.timer_running:
-                                    if st.session_state.start_time is not None:
+                                while st.session_state.get('timer_running', True):
+                                    if 'start_time' in st.session_state:
                                         current_time = time.time()
                                         elapsed_time = current_time - st.session_state.start_time
                                         minutes = int(elapsed_time // 60)
@@ -3654,8 +3655,12 @@ def main():
                             except Exception as e:
                                 logger.error(f"Timer update error: {e}")
                         
-                        # Start timer update thread
-                        timer_thread = threading.Thread(target=update_timer)
+                        # Initialize timer state
+                        st.session_state.timer_running = True
+                        st.session_state.start_time = time.time()
+                        
+                        # Start timer update thread with container
+                        timer_thread = threading.Thread(target=update_timer, args=(timer_container,))
                         timer_thread.daemon = True
                         timer_thread.start()
                         
@@ -3672,7 +3677,7 @@ def main():
                         seconds = int(final_time % 60)
                         timer_container.markdown(f"""
                             <div style="
-                                background: linear-gradient(135deg, #f0fff0 0%, #e5ffe5 100%);
+                                background: linear-gradient(135deg, #f8fff0 0%, #e5ffe5 100%);
                                 padding: 15px;
                                 border-radius: 8px;
                                 margin: 10px 0;
@@ -3753,4 +3758,11 @@ def main():
         st.error(f"Application error: {str(e)}")
 
 if __name__ == "__main__":
+    # At the start of main()
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
     main()
