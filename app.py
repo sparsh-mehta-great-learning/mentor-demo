@@ -32,9 +32,6 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle, TA_CENTER, TA_LEFT
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from io import BytesIO
-import asyncio
-import queue
-from threading import Lock
 
 # Set up logging
 logging.basicConfig(
@@ -42,49 +39,6 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-# Suppress all streamlit and ScriptRunContext related warnings
-logging.getLogger('streamlit').setLevel(logging.ERROR)
-warnings.filterwarnings('ignore', message='.*missing ScriptRunContext.*', category=Warning)
-warnings.filterwarnings('ignore', message='.*ScriptRunContext.*', category=Warning)
-
-# Create a filter to remove all ScriptRunContext related logs
-class ScriptContextFilter(logging.Filter):
-    def filter(self, record):
-        return 'ScriptRunContext' not in str(record.msg)
-
-# Apply filter to root logger and all existing handlers
-logging.root.addFilter(ScriptContextFilter())
-for handler in logging.root.handlers:
-    handler.addFilter(ScriptContextFilter())
-
-# Set all thread loggers to ERROR level
-for name in logging.root.manager.loggerDict:
-    if name.startswith('Thread'):
-        logging.getLogger(name).setLevel(logging.ERROR)
-
-# After imports but before class definitions
-def check_dependencies() -> List[str]:
-    """Check if required system dependencies are installed.
-    
-    Returns:
-        List[str]: List of missing dependencies
-    """
-    missing_deps = []
-    
-    # Check FFmpeg
-    try:
-        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        missing_deps.append('ffmpeg')
-    
-    # Check FFprobe
-    try:
-        subprocess.run(['ffprobe', '-version'], capture_output=True, check=True)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        missing_deps.append('ffprobe')
-        
-    return missing_deps
 
 class AudioProcessingError(Exception):
     """Custom exception for audio processing errors"""
@@ -353,87 +307,6 @@ class AudioFeatureExtractor:
             "variations_per_minute": float((np.sum(np.diff(all_f0) != 0) if len(all_f0) > 1 else 0) / 
                                         (sum(f["duration"] for f in features) / 60))
         }
-
-class AccentClassifier:
-    """Handles accent classification using SpeechBrain"""
-    def __init__(self):
-        try:
-            # Import from speechbrain.inference instead of speechbrain.pretrained
-            from speechbrain.inference.interfaces import foreign_class
-            
-            # Initialize the classifier with the correct source and interface
-            self.classifier = foreign_class(
-                source="Jzuluaga/accent-id-commonaccent_xlsr-en-english",
-                pymodule_file="custom_interface.py",  # This will be downloaded from the HF repo
-                classname="CustomEncoderWav2vec2Classifier",
-                savedir="pretrained_models/accent_classifier"
-            )
-            
-            # Define accent mapping for better readability
-            self.accent_mapping = {
-                "arabic": "Arabic English",
-                "english": "British English",
-                "french": "French English",
-                "german": "German English",
-                "hindi": "Indian English",
-                "italian": "Italian English",
-                "japanese": "Japanese English",
-                "korean": "Korean English",
-                "mandarin": "Mandarin English",
-                "russian": "Russian English",
-                "spanish": "Spanish English",
-                "vietnamese": "Vietnamese English"
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize accent classifier: {e}")
-            self.classifier = None
-            
-    def classify_accent(self, audio_path: str) -> Dict[str, Any]:
-        """Classify accent from audio file"""
-        try:
-            if not self.classifier:
-                return {
-                    "accent": "unknown",
-                    "confidence": 0.0,
-                    "accent_scores": []
-                }
-                
-            # Run classification using SpeechBrain
-            # The classify_file method returns a tuple of (scores, predictions)
-            scores, predictions = self.classifier.classify_file(audio_path)
-            
-            # Convert torch tensors to numpy arrays for easier handling
-            scores = scores.squeeze().numpy()
-            predictions = predictions.squeeze().numpy()
-            
-            # Get all accent scores
-            accent_scores = []
-            for idx, score in enumerate(scores):
-                label = self.classifier.hparams.label_encoder.decode_ndim(predictions[idx])
-                accent = self.accent_mapping.get(label.lower(), label)
-                accent_scores.append({
-                    "accent": accent,
-                    "confidence": float(score)
-                })
-            
-            # Sort by confidence and get top result
-            accent_scores.sort(key=lambda x: x['confidence'], reverse=True)
-            top_result = accent_scores[0]
-            
-            return {
-                "accent": top_result['accent'],
-                "confidence": top_result['confidence'],
-                "accent_scores": accent_scores
-            }
-            
-        except Exception as e:
-            logger.error(f"Accent classification failed: {e}")
-            return {
-                "accent": "unknown",
-                "confidence": 0.0,
-                "accent_scores": []
-            }
 
 class ContentAnalyzer:
     """Analyzes teaching content using OpenAI API"""
@@ -1073,8 +946,7 @@ class RecommendationGenerator:
         
     def generate_recommendations(self, 
                            metrics: Dict[str, Any], 
-                           content_analysis: Dict[str, Any],
-                           accent_analysis: Dict[str, Any],
+                           content_analysis: Dict[str, Any], 
                            progress_callback=None) -> Dict[str, Any]:
         """Generate recommendations with robust JSON handling"""
         for attempt in range(self.retry_count):
@@ -1082,7 +954,7 @@ class RecommendationGenerator:
                 if progress_callback:
                     progress_callback(0.2, "Preparing recommendation analysis...")
                 
-                prompt = self._create_recommendation_prompt(metrics, content_analysis, accent_analysis)
+                prompt = self._create_recommendation_prompt(metrics, content_analysis)
                 
                 if progress_callback:
                     progress_callback(0.5, "Generating recommendations...")
@@ -1160,12 +1032,11 @@ class RecommendationGenerator:
                     }
                 time.sleep(self.retry_delay * (2 ** attempt))
     
-    def _create_recommendation_prompt(self, metrics: Dict[str, Any], content_analysis: Dict[str, Any], accent_analysis: Dict[str, Any]) -> str:
+    def _create_recommendation_prompt(self, metrics: Dict[str, Any], content_analysis: Dict[str, Any]) -> str:
         """Create the recommendation prompt"""
         return f"""Based on the following metrics and analysis, provide recommendations:
 Metrics: {json.dumps(metrics)}
 Content Analysis: {json.dumps(content_analysis)}
-Accent Analysis: {json.dumps(accent_analysis)}
 
 Analyze the teaching style and provide:
 1. A concise performance summary (2-3 paragraphs highlighting key strengths and areas for improvement)
@@ -1289,9 +1160,6 @@ class CostCalculator:
                 print(f"{key.replace('_', ' ').title()}: ${cost:.4f}")
         print(f"\nTotal Cost: ${self.costs['total']:.4f}")
 
-import queue
-from threading import Lock
-
 class MentorEvaluator:
     """Main class for video evaluation"""
     def __init__(self, model_cache_dir: Optional[str] = None):
@@ -1318,7 +1186,6 @@ class MentorEvaluator:
             self.feature_extractor = AudioFeatureExtractor()
             self.content_analyzer = ContentAnalyzer(self.api_key)
             self.recommendation_generator = RecommendationGenerator(self.api_key)
-            self.accent_classifier = AccentClassifier()  # Add this line
             self.cost_calculator = CostCalculator()
         except Exception as e:
             raise RuntimeError(f"Failed to initialize components: {e}")
@@ -1447,21 +1314,17 @@ class MentorEvaluator:
                     self._preprocess_audio(temp_audio, processed_audio)
                     tracker.next_step()
                     
-                    # Step 3: Classify accent (moved earlier)
-                    tracker.update(0.3, "Classifying accent")
-                    accent_analysis = self.accent_classifier.classify_accent(processed_audio)
-                    tracker.next_step()
-                    
-                    # Step 4: Extract features
+                    # Step 3: Extract features
                     tracker.update(0.4, "Extracting audio features")
                     audio_features = self.feature_extractor.extract_features(processed_audio)
                     tracker.next_step()
                     
-                    # Step 5: Get transcript
+                    # Step 4: Get transcript - Modified to handle 3-argument progress callback
                     tracker.update(0.6, "Processing transcript")
                     if transcript_file:
                         transcript = transcript_file.getvalue().decode('utf-8')
                     else:
+                        # Update progress callback to handle 3 arguments
                         tracker.update(0.6, "Transcribing audio")
                         transcript = self._transcribe_audio(
                             processed_audio, 
@@ -1469,16 +1332,15 @@ class MentorEvaluator:
                         )
                     tracker.next_step()
                     
-                    # Step 6: Analyze content
+                    # Step 5: Analyze content
                     tracker.update(0.8, "Analyzing teaching content")
                     content_analysis = self.content_analyzer.analyze_content(transcript)
                     
-                    # Step 7: Generate recommendations
+                    # Step 6: Generate recommendations
                     tracker.update(0.9, "Generating recommendations")
                     recommendations = self.recommendation_generator.generate_recommendations(
                         audio_features,
-                        content_analysis,
-                        accent_analysis  # Add accent_analysis parameter
+                        content_analysis
                     )
                     tracker.next_step()
 
@@ -1489,7 +1351,7 @@ class MentorEvaluator:
                     status.empty()
                     progress.empty()
                     
-                    end_time = time.time()
+                    end_time = time.time()  # End timing
                     duration = end_time - start_time
                     
                     return {
@@ -1498,8 +1360,7 @@ class MentorEvaluator:
                         "teaching": content_analysis,
                         "recommendations": recommendations,
                         "speech_metrics": speech_metrics,
-                        "accent_analysis": accent_analysis,
-                        "processing_time": duration
+                        "processing_time": duration  # Add processing time to results
                     }
 
             finally:
@@ -1692,7 +1553,7 @@ class MentorEvaluator:
                     "score": 1 if 120 <= words_per_minute <= 160 else 0,
                     "wpm": words_per_minute,
                     "total_words": words,
-                    "duration_minutes": duration_minutes
+                    "durat  ion_minutes": duration_minutes
                 },
                 "fluency": {
                     "score": fluency_score,
@@ -2329,33 +2190,6 @@ def display_evaluation(evaluation: Dict[str, Any]):
         with tabs[2]:
             st.header("Recommendations")
             recommendations = evaluation.get("recommendations", {})
-            accent_analysis = evaluation.get("accent_analysis", {})
-            
-            # Add accent analysis section
-            st.markdown("""
-                <div class="accent-card">
-                    <h4>🗣️ Accent Analysis</h4>
-                    <div class="accent-content">
-            """, unsafe_allow_html=True)
-            
-            accent = accent_analysis.get("accent", "unknown")
-            confidence = accent_analysis.get("confidence", 0.0)
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Detected Accent", accent.replace("_", " ").title())
-                st.metric("Confidence", f"{confidence:.1%}")
-            
-            with col2:
-                if "geographyFit" in recommendations:
-                    geo_fit = recommendations["geographyFit"]
-                    st.markdown("### Geographical Fit")
-                    st.markdown(f"**Suitable Markets:** {', '.join(geo_fit.get('suitableMarkets', ['N/A']))}")
-                    st.markdown("**Recommendations:**")
-                    for rec in geo_fit.get("recommendations", []):
-                        st.markdown(f"- {rec}")
-            
-            st.markdown("</div></div>", unsafe_allow_html=True)
             
             # Display summary in a styled card
             if "summary" in recommendations:
@@ -2935,6 +2769,14 @@ def display_evaluation(evaluation: Dict[str, Any]):
         }
         </style>
     """, unsafe_allow_html=True)
+def check_dependencies() -> List[str]:
+    """Check if required dependencies are installed"""
+    missing = []
+    
+    if not shutil.which('ffmpeg'):
+        missing.append("FFmpeg")
+    
+    return missing
 
 def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
     """Generate a more visually appealing and comprehensive PDF report."""
@@ -3670,64 +3512,37 @@ def main():
                         """, unsafe_allow_html=True)
                         
                         # Create a background thread to update the timer
-                        timer_queue = queue.Queue()
-                        timer_lock = Lock()
-                        
                         def update_timer(timer_container):
                             try:
-                                while st.session_state.get('timer_running', True):
-                                    if 'start_time' in st.session_state:
+                                while st.session_state.timer_running:
+                                    if st.session_state.start_time is not None:
                                         current_time = time.time()
                                         elapsed_time = current_time - st.session_state.start_time
                                         minutes = int(elapsed_time // 60)
                                         seconds = int(elapsed_time % 60)
                                         
-                                        # Instead of directly updating, put the values in the queue
-                                        with timer_lock:
-                                            timer_queue.put((minutes, seconds))
+                                        timer_container.markdown(f"""
+                                            <div style="
+                                                background: linear-gradient(135deg, #f0f7ff 0%, #e5f0ff 100%);
+                                                padding: 15px;
+                                                border-radius: 8px;
+                                                margin: 10px 0;
+                                                border-left: 4px solid #1f77b4;
+                                                box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                                <h3 style="margin:0;">⏱️ Processing Time</h3>
+                                                <p style="font-size: 1.2em; margin: 10px 0;">
+                                                    Time elapsed: {minutes:02d}:{seconds:02d}
+                                                </p>
+                                            </div>
+                                        """, unsafe_allow_html=True)
                                     time.sleep(0.1)
                             except Exception as e:
-                                logger.error(f"Timer update error: {e}", exc_info=False)  # Suppress the traceback
+                                logger.error(f"Timer update error: {e}")
                         
-                        # Initialize timer state
-                        st.session_state.timer_running = True
-                        st.session_state.start_time = time.time()
-                        
-                        # Start timer update thread with container
-                        timer_thread = threading.Thread(target=update_timer, args=(timer_container,))
+                        # Start timer update thread
+                        timer_thread = threading.Thread(target=update_timer)
                         timer_thread.daemon = True
                         timer_thread.start()
-                        
-                        # Add periodic timer display updates in the main thread
-                        def update_timer_display():
-                            while True:
-                                try:
-                                    with timer_lock:
-                                        if not timer_queue.empty():
-                                            minutes, seconds = timer_queue.get_nowait()
-                                            timer_container.markdown(f"""
-                                                <div style="
-                                                    background: linear-gradient(135deg, #f0f7ff 0%, #e5f0ff 100%);
-                                                    padding: 15px;
-                                                    border-radius: 8px;
-                                                    margin: 10px 0;
-                                                    border-left: 4px solid #1f77b4;
-                                                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                                                    <h3 style="margin:0;">⏱️ Processing Time</h3>
-                                                    <p style="font-size: 1.2em; margin: 10px 0;">
-                                                        Time elapsed: {minutes:02d}:{seconds:02d}
-                                                    </p>
-                                                </div>
-                                            """, unsafe_allow_html=True)
-                                except queue.Empty:
-                                    break
-                                except Exception as e:
-                                    logger.error(f"Timer display error: {e}", exc_info=False)
-                                    break
-                        
-                        while not st.session_state.get('processing_complete', False):
-                            update_timer_display()
-                            time.sleep(0.1)
                         
                         evaluator = MentorEvaluator()
                         st.session_state.evaluation_results = evaluator.evaluate_video(
@@ -3742,7 +3557,7 @@ def main():
                         seconds = int(final_time % 60)
                         timer_container.markdown(f"""
                             <div style="
-                                background: linear-gradient(135deg, #f8fff0 0%, #e5ffe5 100%);
+                                background: linear-gradient(135deg, #f0fff0 0%, #e5ffe5 100%);
                                 padding: 15px;
                                 border-radius: 8px;
                                 margin: 10px 0;
@@ -3823,11 +3638,6 @@ def main():
         st.error(f"Application error: {str(e)}")
 
 if __name__ == "__main__":
-    # At the start of main()
-    import asyncio
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
     main()
+
+    
