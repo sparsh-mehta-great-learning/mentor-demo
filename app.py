@@ -47,6 +47,16 @@ logger = logging.getLogger(__name__)
 logging.getLogger('streamlit').setLevel(logging.ERROR)
 warnings.filterwarnings('ignore', message='.*missing ScriptRunContext.*')
 
+# Suppress all Thread warnings
+logging.getLogger('Thread').setLevel(logging.ERROR)
+logging.getLogger('Thread-1').setLevel(logging.ERROR)
+logging.getLogger('Thread-3').setLevel(logging.ERROR)  # Added Thread-3
+logging.getLogger('Thread-*').setLevel(logging.ERROR)
+
+# More comprehensive thread warning suppression
+for handler in logging.root.handlers:
+    handler.addFilter(lambda record: not (record.threadName.startswith('Thread-') and 'ScriptRunContext' in str(record.msg)))
+
 # After imports but before class definitions
 def check_dependencies() -> List[str]:
     """Check if required system dependencies are installed.
