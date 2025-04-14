@@ -308,6 +308,56 @@ class AudioFeatureExtractor:
                                         (sum(f["duration"] for f in features) / 60))
         }
 
+class AccentClassifier:
+    """Handles accent classification using Hugging Face models"""
+    def __init__(self):
+        try:
+            from transformers import pipeline
+            self.classifier = pipeline("audio-classification", 
+                                    model="Jzuluaga/accent-id-commonaccent_xlsr-en-english")
+        except Exception as e:
+            logger.error(f"Failed to initialize accent classifier: {e}")
+            self.classifier = None
+            
+    def classify_accent(self, audio_path: str) -> Dict[str, Any]:
+        """Classify accent from audio file"""
+        try:
+            if not self.classifier:
+                return {
+                    "accent": "unknown",
+                    "confidence": 0.0,
+                    "accent_scores": []
+                }
+                
+            # Run classification
+            results = self.classifier(audio_path)
+            
+            # Get top result
+            top_result = max(results, key=lambda x: x['score'])
+            
+            # Format accent scores
+            accent_scores = [
+                {
+                    "accent": result['label'],
+                    "confidence": float(result['score'])
+                }
+                for result in results
+            ]
+            
+            return {
+                "accent": top_result['label'],
+                "confidence": float(top_result['score']),
+                "accent_scores": accent_scores
+            }
+            
+        except Exception as e:
+            logger.error(f"Accent classification failed: {e}")
+            return {
+                "accent": "unknown",
+                "confidence": 0.0,
+                "accent_scores": []
+            }
+
 class ContentAnalyzer:
     """Analyzes teaching content using OpenAI API"""
     def __init__(self, api_key: str):
@@ -946,7 +996,8 @@ class RecommendationGenerator:
         
     def generate_recommendations(self, 
                            metrics: Dict[str, Any], 
-                           content_analysis: Dict[str, Any], 
+                           content_analysis: Dict[str, Any],
+                           accent_analysis: Dict[str, Any],
                            progress_callback=None) -> Dict[str, Any]:
         """Generate recommendations with robust JSON handling"""
         for attempt in range(self.retry_count):
@@ -954,7 +1005,7 @@ class RecommendationGenerator:
                 if progress_callback:
                     progress_callback(0.2, "Preparing recommendation analysis...")
                 
-                prompt = self._create_recommendation_prompt(metrics, content_analysis)
+                prompt = self._create_recommendation_prompt(metrics, content_analysis, accent_analysis)
                 
                 if progress_callback:
                     progress_callback(0.5, "Generating recommendations...")
@@ -1032,11 +1083,12 @@ class RecommendationGenerator:
                     }
                 time.sleep(self.retry_delay * (2 ** attempt))
     
-    def _create_recommendation_prompt(self, metrics: Dict[str, Any], content_analysis: Dict[str, Any]) -> str:
+    def _create_recommendation_prompt(self, metrics: Dict[str, Any], content_analysis: Dict[str, Any], accent_analysis: Dict[str, Any]) -> str:
         """Create the recommendation prompt"""
         return f"""Based on the following metrics and analysis, provide recommendations:
 Metrics: {json.dumps(metrics)}
 Content Analysis: {json.dumps(content_analysis)}
+Accent Analysis: {json.dumps(accent_analysis)}
 
 Analyze the teaching style and provide:
 1. A concise performance summary (2-3 paragraphs highlighting key strengths and areas for improvement)
@@ -1186,6 +1238,7 @@ class MentorEvaluator:
             self.feature_extractor = AudioFeatureExtractor()
             self.content_analyzer = ContentAnalyzer(self.api_key)
             self.recommendation_generator = RecommendationGenerator(self.api_key)
+            self.accent_classifier = AccentClassifier()  # Add this line
             self.cost_calculator = CostCalculator()
         except Exception as e:
             raise RuntimeError(f"Failed to initialize components: {e}")
@@ -1314,17 +1367,21 @@ class MentorEvaluator:
                     self._preprocess_audio(temp_audio, processed_audio)
                     tracker.next_step()
                     
-                    # Step 3: Extract features
+                    # Step 3: Classify accent (moved earlier)
+                    tracker.update(0.3, "Classifying accent")
+                    accent_analysis = self.accent_classifier.classify_accent(processed_audio)
+                    tracker.next_step()
+                    
+                    # Step 4: Extract features
                     tracker.update(0.4, "Extracting audio features")
                     audio_features = self.feature_extractor.extract_features(processed_audio)
                     tracker.next_step()
                     
-                    # Step 4: Get transcript - Modified to handle 3-argument progress callback
+                    # Step 5: Get transcript
                     tracker.update(0.6, "Processing transcript")
                     if transcript_file:
                         transcript = transcript_file.getvalue().decode('utf-8')
                     else:
-                        # Update progress callback to handle 3 arguments
                         tracker.update(0.6, "Transcribing audio")
                         transcript = self._transcribe_audio(
                             processed_audio, 
@@ -1332,15 +1389,16 @@ class MentorEvaluator:
                         )
                     tracker.next_step()
                     
-                    # Step 5: Analyze content
+                    # Step 6: Analyze content
                     tracker.update(0.8, "Analyzing teaching content")
                     content_analysis = self.content_analyzer.analyze_content(transcript)
                     
-                    # Step 6: Generate recommendations
+                    # Step 7: Generate recommendations
                     tracker.update(0.9, "Generating recommendations")
                     recommendations = self.recommendation_generator.generate_recommendations(
                         audio_features,
-                        content_analysis
+                        content_analysis,
+                        accent_analysis  # Add accent_analysis parameter
                     )
                     tracker.next_step()
 
@@ -1351,7 +1409,7 @@ class MentorEvaluator:
                     status.empty()
                     progress.empty()
                     
-                    end_time = time.time()  # End timing
+                    end_time = time.time()
                     duration = end_time - start_time
                     
                     return {
@@ -1360,7 +1418,8 @@ class MentorEvaluator:
                         "teaching": content_analysis,
                         "recommendations": recommendations,
                         "speech_metrics": speech_metrics,
-                        "processing_time": duration  # Add processing time to results
+                        "accent_analysis": accent_analysis,
+                        "processing_time": duration
                     }
 
             finally:
@@ -1553,7 +1612,7 @@ class MentorEvaluator:
                     "score": 1 if 120 <= words_per_minute <= 160 else 0,
                     "wpm": words_per_minute,
                     "total_words": words,
-                    "durat  ion_minutes": duration_minutes
+                    "duration_minutes": duration_minutes
                 },
                 "fluency": {
                     "score": fluency_score,
@@ -2190,6 +2249,33 @@ def display_evaluation(evaluation: Dict[str, Any]):
         with tabs[2]:
             st.header("Recommendations")
             recommendations = evaluation.get("recommendations", {})
+            accent_analysis = evaluation.get("accent_analysis", {})
+            
+            # Add accent analysis section
+            st.markdown("""
+                <div class="accent-card">
+                    <h4>🗣️ Accent Analysis</h4>
+                    <div class="accent-content">
+            """, unsafe_allow_html=True)
+            
+            accent = accent_analysis.get("accent", "unknown")
+            confidence = accent_analysis.get("confidence", 0.0)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Detected Accent", accent.replace("_", " ").title())
+                st.metric("Confidence", f"{confidence:.1%}")
+            
+            with col2:
+                if "geographyFit" in recommendations:
+                    geo_fit = recommendations["geographyFit"]
+                    st.markdown("### Geographical Fit")
+                    st.markdown(f"**Suitable Markets:** {', '.join(geo_fit.get('suitableMarkets', ['N/A']))}")
+                    st.markdown("**Recommendations:**")
+                    for rec in geo_fit.get("recommendations", []):
+                        st.markdown(f"- {rec}")
+            
+            st.markdown("</div></div>", unsafe_allow_html=True)
             
             # Display summary in a styled card
             if "summary" in recommendations:
@@ -3639,5 +3725,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-    
