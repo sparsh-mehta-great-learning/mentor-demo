@@ -33,6 +33,9 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle, TA_CENTER,
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from io import BytesIO
 
+# Filter out ScriptRunContext warnings
+warnings.filterwarnings('ignore', '.*ScriptRunContext!.*')
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -3639,5 +3642,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
     
