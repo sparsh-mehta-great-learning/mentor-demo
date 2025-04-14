@@ -33,6 +33,8 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle, TA_CENTER,
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from io import BytesIO
 import asyncio
+import queue
+from threading import Lock
 
 # Set up logging
 logging.basicConfig(
@@ -40,6 +42,10 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Suppress specific warnings
+logging.getLogger('streamlit').setLevel(logging.ERROR)
+warnings.filterwarnings('ignore', message='.*missing ScriptRunContext.*')
 
 class AudioProcessingError(Exception):
     """Custom exception for audio processing errors"""
@@ -313,13 +319,14 @@ class AccentClassifier:
     """Handles accent classification using SpeechBrain"""
     def __init__(self):
         try:
-            from speechbrain.inference import foreign_class  # Changed from pretrained to inference
+            # Import from speechbrain.inference instead of speechbrain.pretrained
+            from speechbrain.inference.interfaces import foreign_class
             
-            # Initialize the SpeechBrain classifier
+            # Initialize the SpeechBrain classifier with updated path
             self.classifier = foreign_class(
                 source="Jzuluaga/accent-id-commonaccent_xlsr-en-english",
                 pymodule_file="custom_interface.py",
-                classname="CustomEncoderWav2vec2Classifier"
+                classname="CustomEncoderClassifier"  # Updated classname
             )
             
             # Define accent mapping for better readability
@@ -1241,6 +1248,9 @@ class CostCalculator:
             if key != 'total':
                 print(f"{key.replace('_', ' ').title()}: ${cost:.4f}")
         print(f"\nTotal Cost: ${self.costs['total']:.4f}")
+
+import queue
+from threading import Lock
 
 class MentorEvaluator:
     """Main class for video evaluation"""
@@ -2885,14 +2895,6 @@ def display_evaluation(evaluation: Dict[str, Any]):
         }
         </style>
     """, unsafe_allow_html=True)
-def check_dependencies() -> List[str]:
-    """Check if required dependencies are installed"""
-    missing = []
-    
-    if not shutil.which('ffmpeg'):
-        missing.append("FFmpeg")
-    
-    return missing
 
 def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
     """Generate a more visually appealing and comprehensive PDF report."""
@@ -3628,6 +3630,9 @@ def main():
                         """, unsafe_allow_html=True)
                         
                         # Create a background thread to update the timer
+                        timer_queue = queue.Queue()
+                        timer_lock = Lock()
+                        
                         def update_timer(timer_container):
                             try:
                                 while st.session_state.get('timer_running', True):
@@ -3637,23 +3642,12 @@ def main():
                                         minutes = int(elapsed_time // 60)
                                         seconds = int(elapsed_time % 60)
                                         
-                                        timer_container.markdown(f"""
-                                            <div style="
-                                                background: linear-gradient(135deg, #f0f7ff 0%, #e5f0ff 100%);
-                                                padding: 15px;
-                                                border-radius: 8px;
-                                                margin: 10px 0;
-                                                border-left: 4px solid #1f77b4;
-                                                box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                                                <h3 style="margin:0;">⏱️ Processing Time</h3>
-                                                <p style="font-size: 1.2em; margin: 10px 0;">
-                                                    Time elapsed: {minutes:02d}:{seconds:02d}
-                                                </p>
-                                            </div>
-                                        """, unsafe_allow_html=True)
+                                        # Instead of directly updating, put the values in the queue
+                                        with timer_lock:
+                                            timer_queue.put((minutes, seconds))
                                     time.sleep(0.1)
                             except Exception as e:
-                                logger.error(f"Timer update error: {e}")
+                                logger.error(f"Timer update error: {e}", exc_info=False)  # Suppress the traceback
                         
                         # Initialize timer state
                         st.session_state.timer_running = True
@@ -3663,6 +3657,37 @@ def main():
                         timer_thread = threading.Thread(target=update_timer, args=(timer_container,))
                         timer_thread.daemon = True
                         timer_thread.start()
+                        
+                        # Add periodic timer display updates in the main thread
+                        def update_timer_display():
+                            while True:
+                                try:
+                                    with timer_lock:
+                                        if not timer_queue.empty():
+                                            minutes, seconds = timer_queue.get_nowait()
+                                            timer_container.markdown(f"""
+                                                <div style="
+                                                    background: linear-gradient(135deg, #f0f7ff 0%, #e5f0ff 100%);
+                                                    padding: 15px;
+                                                    border-radius: 8px;
+                                                    margin: 10px 0;
+                                                    border-left: 4px solid #1f77b4;
+                                                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                                    <h3 style="margin:0;">⏱️ Processing Time</h3>
+                                                    <p style="font-size: 1.2em; margin: 10px 0;">
+                                                        Time elapsed: {minutes:02d}:{seconds:02d}
+                                                    </p>
+                                                </div>
+                                            """, unsafe_allow_html=True)
+                                except queue.Empty:
+                                    break
+                                except Exception as e:
+                                    logger.error(f"Timer display error: {e}", exc_info=False)
+                                    break
+                        
+                        while not st.session_state.get('processing_complete', False):
+                            update_timer_display()
+                            time.sleep(0.1)
                         
                         evaluator = MentorEvaluator()
                         st.session_state.evaluation_results = evaluator.evaluate_video(
