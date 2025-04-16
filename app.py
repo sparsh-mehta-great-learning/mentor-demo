@@ -2301,15 +2301,6 @@ def display_evaluation(evaluation: Dict[str, Any]):
                 with col2:
                     st.metric("Confidence", f"{confidence:.1f}%")
                 
-                # Display accent probabilities if available
-                if "probabilities" in accent_info:
-                    st.markdown("### Accent Probabilities")
-                    probs = accent_info["probabilities"]
-                    sorted_probs = sorted(probs.items(), key=lambda x: x[1], reverse=True)
-                    
-                    for accent, prob in sorted_probs[:5]:  # Show top 5 probabilities
-                        st.progress(prob, text=f"{accent}: {prob*100:.1f}%")
-                
                 st.markdown("</div></div>", unsafe_allow_html=True)
             
             # Display summary in a styled card
