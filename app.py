@@ -2320,13 +2320,80 @@ def display_evaluation(evaluation: Dict[str, Any]):
                     <div class="assessment-content">
             """, unsafe_allow_html=True)
             
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Geography Fit", recommendations.get("geographyFit", "Unknown"))
-            with col2:
-                st.metric("Teaching Rigor", recommendations.get("rigor", "Unknown"))
+            # Geography Fit
+            st.markdown("""
+                <div class="assessment-item">
+                    <h5>Geography Fit</h5>
+                    <div class="assessment-text">
+            """, unsafe_allow_html=True)
+            geography_fit = recommendations.get("geographyFit", "Not available")
+            st.markdown(f"<p>{geography_fit}</p>", unsafe_allow_html=True)
+            st.markdown("</div></div>", unsafe_allow_html=True)
+            
+            # Teaching Rigor
+            st.markdown("""
+                <div class="assessment-item">
+                    <h5>Teaching Rigor</h5>
+                    <div class="assessment-text">
+            """, unsafe_allow_html=True)
+            teaching_rigor = recommendations.get("rigor", "Not available")
+            st.markdown(f"<p>{teaching_rigor}</p>", unsafe_allow_html=True)
+            st.markdown("</div></div>", unsafe_allow_html=True)
             
             st.markdown("</div></div>", unsafe_allow_html=True)
+            
+            # Update CSS for assessment items
+            st.markdown("""
+                <style>
+                .assessment-card {
+                    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin: 15px 0;
+                    border-left: 4px solid #4a69bd;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                }
+                
+                .assessment-content {
+                    margin-top: 15px;
+                }
+                
+                .assessment-item {
+                    background: white;
+                    border-radius: 8px;
+                    padding: 15px;
+                    margin: 10px 0;
+                    border: 1px solid #e9ecef;
+                    transition: transform 0.2s ease;
+                }
+                
+                .assessment-item:hover {
+                    transform: translateX(5px);
+                }
+                
+                .assessment-item h5 {
+                    color: #4a69bd;
+                    margin-bottom: 10px;
+                    font-size: 1.1em;
+                    border-bottom: 2px solid #f0f0f0;
+                    padding-bottom: 5px;
+                }
+                
+                .assessment-text {
+                    color: #2c3e50;
+                    font-size: 1em;
+                    line-height: 1.6;
+                    padding: 10px;
+                    background: #f8f9fa;
+                    border-radius: 4px;
+                }
+                
+                .assessment-text p {
+                    margin: 0;
+                    padding: 0;
+                }
+                </style>
+            """, unsafe_allow_html=True)
             
             # Add Profile Matches
             if "profileMatches" in recommendations:
