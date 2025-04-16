@@ -194,10 +194,14 @@ class AudioFeatureExtractor:
             if len(audio) > max_samples:
                 audio = audio[:max_samples]
             
-            # Create temporary file for trimmed audio
-            with temporary_file(suffix='.wav') as temp_path:
-                sf.write(temp_path, audio, sr)
-                return temp_path
+            # Create temporary file that will persist until explicitly deleted
+            temp_file = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
+            temp_path = temp_file.name
+            temp_file.close()  # Close the file handle but keep the file
+            
+            # Write the audio data
+            sf.write(temp_path, audio, sr)
+            return temp_path
                 
         except Exception as e:
             logger.error(f"Error trimming audio: {e}")
@@ -208,14 +212,15 @@ class AudioFeatureExtractor:
         if not self.has_accent_classifier:
             return {"accent": "Unknown", "confidence": 0.0}
         
+        temp_path = None
         try:
             # Trim audio to 5 minutes for accent detection
-            trimmed_audio_path = self._trim_audio_to_duration(audio_path, max_duration_seconds=300)
+            temp_path = self._trim_audio_to_duration(audio_path, max_duration_seconds=300)
             
             # Classify accent using trimmed audio
-            out_prob, score, index, text_lab = self.accent_classifier.classify_file(trimmed_audio_path)
+            out_prob, score, index, text_lab = self.accent_classifier.classify_file(temp_path)
             
-            return {
+            result = {
                 "accent": text_lab[0],  # Get first element since it returns a list
                 "confidence": float(score[0]),  # Convert from tensor to float
                 "probabilities": {
@@ -224,9 +229,21 @@ class AudioFeatureExtractor:
                 },
                 "note": "Analysis based on first 5 minutes of audio"
             }
+            
+            return result
+            
         except Exception as e:
             logger.error(f"Error in accent classification: {e}")
             return {"accent": "Unknown", "confidence": 0.0}
+            
+        finally:
+            # Clean up temporary file
+            if temp_path and temp_path != audio_path:
+                try:
+                    if os.path.exists(temp_path):
+                        os.unlink(temp_path)
+                except Exception as e:
+                    logger.warning(f"Error cleaning up temporary file: {e}")
 
     def extract_features(self, audio_path: str, progress_callback=None) -> Dict[str, float]:
         try:
