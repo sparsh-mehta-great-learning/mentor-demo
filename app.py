@@ -145,6 +145,18 @@ class AudioFeatureExtractor:
         self.min_pause_duration = 4  # minimum pause duration in seconds
         self.silence_threshold = -40    # dB threshold for silence
         
+        # Initialize accent classifier
+        try:
+            from speechbrain.pretrained import EncoderClassifier
+            self.accent_classifier = EncoderClassifier.from_hparams(
+                source="Jzuluaga/accent-id-commonaccent_ecapa",
+                savedir="pretrained_models/accent-id-commonaccent_ecapa"
+            )
+            self.has_accent_classifier = True
+        except Exception as e:
+            logger.warning(f"Could not initialize accent classifier: {e}")
+            self.has_accent_classifier = False
+
     def _analyze_pauses(self, silent_frames, frame_time):
         """Analyze pauses with minimal memory usage."""
         pause_durations = []
@@ -168,6 +180,25 @@ class AudioFeatureExtractor:
             'total_pauses': 0,
             'mean_pause_duration': 0.0
         }
+
+    def classify_accent(self, audio_path: str) -> Dict[str, Any]:
+        """Classify the accent from the audio file"""
+        if not self.has_accent_classifier:
+            return {"accent": "Unknown", "confidence": 0.0}
+        
+        try:
+            out_prob, score, index, text_lab = self.accent_classifier.classify_file(audio_path)
+            return {
+                "accent": text_lab[0],  # Get first element since it returns a list
+                "confidence": float(score[0]),  # Convert from tensor to float
+                "probabilities": {
+                    accent: float(prob) 
+                    for accent, prob in zip(self.accent_classifier.hparams.label_encoder.classes, out_prob[0])
+                }
+            }
+        except Exception as e:
+            logger.error(f"Error in accent classification: {e}")
+            return {"accent": "Unknown", "confidence": 0.0}
 
     def extract_features(self, audio_path: str, progress_callback=None) -> Dict[str, float]:
         try:
@@ -239,6 +270,12 @@ class AudioFeatureExtractor:
             duration_minutes = len(audio) / sr / 60
             pauses_per_minute = float(pause_analysis['total_pauses'] / duration_minutes if duration_minutes > 0 else 0)
             
+            # Add accent classification
+            if progress_callback:
+                progress_callback(0.9, "Classifying accent...")
+            
+            accent_info = self.classify_accent(audio_path)
+            
             return {
                 "pitch_mean": pitch_mean,
                 "pitch_std": pitch_std,
@@ -252,7 +289,8 @@ class AudioFeatureExtractor:
                 "rising_patterns": int(np.sum(np.diff(valid_f0) > 0)) if len(valid_f0) > 1 else 0,
                 "falling_patterns": int(np.sum(np.diff(valid_f0) < 0)) if len(valid_f0) > 1 else 0,
                 "variations_per_minute": float(len(valid_f0) / (len(audio) / sr / 60)) if len(audio) > 0 else 0,
-                "direction_changes_per_min": changes_per_minute
+                "direction_changes_per_min": changes_per_minute,
+                "accent_classification": accent_info
             }
             
         except Exception as e:
@@ -2193,6 +2231,55 @@ def display_evaluation(evaluation: Dict[str, Any]):
         with tabs[2]:
             st.header("Recommendations")
             recommendations = evaluation.get("recommendations", {})
+            
+            # Add accent analysis section
+            audio_features = evaluation.get("audio_features", {})
+            accent_info = audio_features.get("accent_classification", {})
+            
+            if accent_info and accent_info.get("accent") != "Unknown":
+                st.markdown("""
+                    <div class="accent-card">
+                        <h4>🗣️ Accent Analysis</h4>
+                        <div class="accent-content">
+                """, unsafe_allow_html=True)
+                
+                accent = accent_info.get("accent", "Unknown")
+                confidence = accent_info.get("confidence", 0.0) * 100
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Detected Accent", accent)
+                with col2:
+                    st.metric("Confidence", f"{confidence:.1f}%")
+                
+                # Display accent probabilities if available
+                if "probabilities" in accent_info:
+                    st.markdown("### Accent Probabilities")
+                    probs = accent_info["probabilities"]
+                    sorted_probs = sorted(probs.items(), key=lambda x: x[1], reverse=True)
+                    
+                    for accent, prob in sorted_probs[:5]:  # Show top 5 probabilities
+                        st.progress(prob, text=f"{accent}: {prob*100:.1f}%")
+                
+                st.markdown("</div></div>", unsafe_allow_html=True)
+            
+            # Add accent-specific CSS
+            st.markdown("""
+                <style>
+                .accent-card {
+                    background: linear-gradient(135deg, #f0f7ff 0%, #e5f0ff 100%);
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin: 15px 0;
+                    border-left: 4px solid #4a69bd;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                }
+                
+                .accent-content {
+                    margin-top: 15px;
+                }
+                </style>
+            """, unsafe_allow_html=True)
             
             # Display summary in a styled card
             if "summary" in recommendations:
