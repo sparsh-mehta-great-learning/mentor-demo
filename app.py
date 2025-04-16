@@ -220,15 +220,19 @@ class AudioFeatureExtractor:
             # Classify accent using trimmed audio
             out_prob, score, index, text_lab = self.accent_classifier.classify_file(temp_path)
             
+            # Convert torch tensors to Python types and create result
             result = {
-                "accent": text_lab[0],  # Get first element since it returns a list
-                "confidence": float(score[0]),  # Convert from tensor to float
+                "accent": text_lab[0] if isinstance(text_lab, list) else str(text_lab),
+                "confidence": float(score[0]) if hasattr(score, '__len__') else float(score),
                 "probabilities": {
-                    accent: float(prob) 
-                    for accent, prob in zip(self.accent_classifier.hparams.label_encoder.classes, out_prob[0])
-                },
+                    str(i): float(prob) 
+                    for i, prob in enumerate(out_prob[0])
+                } if hasattr(out_prob, '__len__') else {},
                 "note": "Analysis based on first 5 minutes of audio"
             }
+            
+            # Log the classification results for debugging
+            logger.info(f"Accent classification results - Label: {text_lab}, Score: {score}, Index: {index}")
             
             return result
             
