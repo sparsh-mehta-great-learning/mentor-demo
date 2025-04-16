@@ -2312,24 +2312,6 @@ def display_evaluation(evaluation: Dict[str, Any]):
                 
                 st.markdown("</div></div>", unsafe_allow_html=True)
             
-            # Add accent-specific CSS
-            st.markdown("""
-                <style>
-                .accent-card {
-                    background: linear-gradient(135deg, #f0f7ff 0%, #e5f0ff 100%);
-                    padding: 20px;
-                    border-radius: 8px;
-                    margin: 15px 0;
-                    border-left: 4px solid #4a69bd;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                }
-                
-                .accent-content {
-                    margin-top: 15px;
-                }
-                </style>
-            """, unsafe_allow_html=True)
-            
             # Display summary in a styled card
             if "summary" in recommendations:
                 st.markdown("""
@@ -2338,6 +2320,70 @@ def display_evaluation(evaluation: Dict[str, Any]):
                         <div class="summary-content">
                 """, unsafe_allow_html=True)
                 st.markdown(recommendations["summary"])
+                st.markdown("</div></div>", unsafe_allow_html=True)
+            
+            # Add Geography Fit and Rigor Assessment
+            st.markdown("""
+                <div class="assessment-card">
+                    <h4>🌍 Teaching Assessment</h4>
+                    <div class="assessment-content">
+            """, unsafe_allow_html=True)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Geography Fit", recommendations.get("geographyFit", "Unknown"))
+            with col2:
+                st.metric("Teaching Rigor", recommendations.get("rigor", "Unknown"))
+            
+            st.markdown("</div></div>", unsafe_allow_html=True)
+            
+            # Add Profile Matches
+            if "profileMatches" in recommendations:
+                st.markdown("""
+                    <div class="profiles-card">
+                        <h4>👥 Learner Profile Matches</h4>
+                        <div class="profiles-content">
+                """, unsafe_allow_html=True)
+                
+                for profile in recommendations["profileMatches"]:
+                    profile_name = profile.get("profile", "").replace("_", " ").title()
+                    is_match = profile.get("match", False)
+                    reason = profile.get("reason", "No reason provided")
+                    
+                    st.markdown(f"""
+                        <div class="profile-item {'profile-match' if is_match else ''}">
+                            <div class="profile-header">
+                                <span class="profile-name">{profile_name}</span>
+                                <span class="match-badge {'match-yes' if is_match else 'match-no'}">
+                                    {'✅ Best Match' if is_match else '❌ Not Recommended'}
+                                </span>
+                            </div>
+                            <div class="profile-reason">{reason}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown("</div></div>", unsafe_allow_html=True)
+            
+            # Add Question Handling Assessment
+            if "questionHandling" in recommendations:
+                st.markdown("""
+                    <div class="question-handling-card">
+                        <h4>❓ Question Handling Assessment</h4>
+                        <div class="question-content">
+                """, unsafe_allow_html=True)
+                
+                q_handling = recommendations["questionHandling"]
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Confidence", q_handling.get("confidence", "Unknown"))
+                with col2:
+                    st.metric("Answer Accuracy", q_handling.get("accuracy", "Unknown"))
+                
+                if "improvements" in q_handling:
+                    st.markdown("### Suggested Improvements")
+                    for improvement in q_handling["improvements"]:
+                        st.markdown(f"- {improvement}")
+                
                 st.markdown("</div></div>", unsafe_allow_html=True)
             
             # Add Nervousness Analysis Section
@@ -2387,7 +2433,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
             
             st.markdown("</div></div>", unsafe_allow_html=True)
             
-            # Display improvements using categories from content analysis
+            # Add Areas for Improvement section
             st.markdown("<h4>💡 Areas for Improvement</h4>", unsafe_allow_html=True)
             improvements = recommendations.get("improvements", [])
             
@@ -2436,143 +2482,71 @@ def display_evaluation(evaluation: Dict[str, Any]):
             # Add additional CSS for new components
             st.markdown("""
                 <style>
-                .teaching-card {
-                    background: white;
-                    border-radius: 8px;
-                    padding: 20px;
-                    margin: 10px 0;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }
-                
-                .teaching-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    margin-bottom: 15px;
-                }
-                
-                .category-name {
-                    font-size: 1.2em;
-                    font-weight: bold;
-                    color: #1f77b4;
-                }
-                
-                .score-badge {
-                    padding: 5px 15px;
-                    border-radius: 15px;
-                    font-weight: bold;
-                }
-                
-                .score-pass {
-                    background-color: #28a745;
-                    color: white;
-                }
-                
-                .score-fail {
-                    background-color: #dc3545;
-                    color: white;
-                }
-                
-                .citations-container {
-                    margin-top: 10px;
-                }
-                
-                .citation-box {
-                    background: #f8f9fa;
-                    border-left: 3px solid #6c757d;
-                    padding: 10px;
-                    margin: 5px 0;
-                    border-radius: 0 4px 4px 0;
-                }
-                
-                .citation-text {
-                    color: #495057;
-                }
-                
-                .summary-card {
+                .assessment-card, .profiles-card, .question-handling-card {
                     background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-                    border-radius: 8px;
                     padding: 20px;
+                    border-radius: 8px;
                     margin: 15px 0;
-                    border-left: 4px solid #1f77b4;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    border-left: 4px solid #4a69bd;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
                 }
                 
-                .improvement-card {
+                .profile-item {
                     background: white;
                     border-radius: 8px;
                     padding: 15px;
                     margin: 10px 0;
-                    height: 100%;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    border: 1px solid #e9ecef;
+                    transition: transform 0.2s ease;
                 }
                 
-                .improvement-card h5 {
-                    color: #1f77b4;
-                    margin-bottom: 10px;
-                    border-bottom: 2px solid #f0f0f0;
-                    padding-bottom: 5px;
-                }
-                
-                .improvement-list {
-                    margin-top: 10px;
-                }
-                
-                .improvement-item {
-                    padding: 5px 0;
-                    border-bottom: 1px solid #f0f0f0;
-                }
-                
-                .improvement-item:last-child {
-                    border-bottom: none;
-                }
-                
-                .nervousness-card {
-                    background: linear-gradient(135deg, #fff5f5 0%, #ffffff 100%);
-                    border-radius: 8px;
-                    padding: 20px;
-                    margin: 15px 0;
-                    border-left: 4px solid #dc3545;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }
-                
-                .nervousness-content {
-                    margin-top: 15px;
-                }
-                
-                .nervousness-content ul {
-                    list-style-type: none;
-                    padding-left: 0;
-                }
-                
-                .nervousness-content li {
-                    margin-bottom: 10px;
-                    padding-left: 15px;
-                    border-left: 2px solid #dc3545;
-                }
-                
-                .nervousness-content li:hover {
-                    background-color: #fff5f5;
+                .profile-item:hover {
                     transform: translateX(5px);
-                    transition: all 0.2s ease;
                 }
                 
-                .nervousness-indicator {
-                    display: inline-block;
-                    padding: 4px 12px;
+                .profile-match {
+                    border-left: 4px solid #28a745;
+                }
+                
+                .profile-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 10px;
+                }
+                
+                .profile-name {
+                    font-weight: bold;
+                    color: #2c3e50;
+                }
+                
+                .match-badge {
+                    padding: 4px 8px;
                     border-radius: 15px;
                     font-size: 0.9em;
-                    margin: 5px;
-                    background-color: #fff5f5;
-                    color: #dc3545;
-                    border: 1px solid #dc3545;
                 }
                 
-                .nervousness-indicator:hover {
-                    background-color: #dc3545;
-                    color: white;
-                    transform: translateY(-2px);
-                    transition: all 0.2s ease;
+                .match-yes {
+                    background-color: #d4edda;
+                    color: #155724;
+                }
+                
+                .match-no {
+                    background-color: #f8d7da;
+                    color: #721c24;
+                }
+                
+                .profile-reason {
+                    color: #666;
+                    font-size: 0.95em;
+                    margin-top: 8px;
+                    padding: 8px;
+                    background: #f8f9fa;
+                    border-radius: 4px;
+                }
+                
+                .question-content {
+                    margin-top: 15px;
                 }
                 </style>
             """, unsafe_allow_html=True)
