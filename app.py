@@ -181,20 +181,48 @@ class AudioFeatureExtractor:
             'mean_pause_duration': 0.0
         }
 
+    def _trim_audio_to_duration(self, audio_path: str, max_duration_seconds: int = 300) -> str:
+        """Trim audio file to specified duration (default 5 minutes) and return path to trimmed file"""
+        try:
+            # Load audio
+            audio, sr = librosa.load(audio_path, sr=self.sr)
+            
+            # Calculate samples for max duration
+            max_samples = sr * max_duration_seconds
+            
+            # Trim audio if longer than max duration
+            if len(audio) > max_samples:
+                audio = audio[:max_samples]
+            
+            # Create temporary file for trimmed audio
+            with temporary_file(suffix='.wav') as temp_path:
+                sf.write(temp_path, audio, sr)
+                return temp_path
+                
+        except Exception as e:
+            logger.error(f"Error trimming audio: {e}")
+            return audio_path
+
     def classify_accent(self, audio_path: str) -> Dict[str, Any]:
-        """Classify the accent from the audio file"""
+        """Classify the accent from the first 5 minutes of the audio file"""
         if not self.has_accent_classifier:
             return {"accent": "Unknown", "confidence": 0.0}
         
         try:
-            out_prob, score, index, text_lab = self.accent_classifier.classify_file(audio_path)
+            # Trim audio to 5 minutes for accent detection
+            trimmed_audio_path = self._trim_audio_to_duration(audio_path, max_duration_seconds=300)
+            
+            # Classify accent using trimmed audio
+            out_prob, score, index, text_lab = self.accent_classifier.classify_file(trimmed_audio_path)
+            
             return {
                 "accent": text_lab[0],  # Get first element since it returns a list
                 "confidence": float(score[0]),  # Convert from tensor to float
                 "probabilities": {
                     accent: float(prob) 
                     for accent, prob in zip(self.accent_classifier.hparams.label_encoder.classes, out_prob[0])
-                }
+                },
+                "note": "Analysis based on first 5 minutes of audio"
             }
         except Exception as e:
             logger.error(f"Error in accent classification: {e}")
