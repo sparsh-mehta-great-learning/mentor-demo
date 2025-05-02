@@ -32,6 +32,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle, TA_CENTER, TA_LEFT
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from io import BytesIO
+import plotly.express as px
 
 # Filter out ScriptRunContext warnings
 warnings.filterwarnings('ignore', '.*ScriptRunContext!.*')
@@ -3687,7 +3688,20 @@ def main():
             </style>
         """, unsafe_allow_html=True)
 
-        # Input type selection with better UI
+        # Add analysis mode selection
+        st.markdown('<div class="mode-selection">', unsafe_allow_html=True)
+        st.markdown("### 🎥 Select Analysis Mode")
+        analysis_mode = st.radio(
+            "Choose how you want to analyze videos:",
+            options=[
+                "Single Video Analysis",
+                "Multiple Videos Analysis"
+            ],
+            help="Select whether you want to analyze one video or multiple videos in sequence"
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Input type selection (moved after mode selection)
         st.markdown('<div class="input-selection">', unsafe_allow_html=True)
         st.markdown("### 📤 Select Upload Method")
         input_type = st.radio(
@@ -3700,344 +3714,177 @@ def main():
         )
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Video upload section
+        if analysis_mode == "Single Video Analysis":
+            # Existing single video upload and processing code
+            handle_single_video_analysis(input_type)
+        else:
+            # New multiple videos upload and processing code
+            handle_multiple_videos_analysis(input_type)
+
+    except Exception as e:
+        st.error(f"Application error: {str(e)}")
+
+def handle_single_video_analysis(input_type):
+    # Move existing video processing code here
+    # ... (existing single video upload and processing code)
+
+def handle_multiple_videos_analysis(input_type):
+    st.markdown('<div class="upload-section multiple-videos">', unsafe_allow_html=True)
+    st.markdown('<p class="upload-header">📹 Upload Teaching Videos</p>', unsafe_allow_html=True)
+    
+    # Allow multiple file upload
+    uploaded_files = st.file_uploader(
+        "Select video files",
+        type=['mp4', 'avi', 'mov'],
+        accept_multiple_files=True,
+        help="Upload multiple teaching videos (MP4, AVI, or MOV format, max 1GB each)"
+    )
+
+    # Handle transcript uploads if needed
+    uploaded_transcripts = {}
+    if input_type == "Video + Manual Transcript":
         st.markdown('<div class="upload-section">', unsafe_allow_html=True)
-        st.markdown('<p class="upload-header">📹 Upload Teaching Video</p>', unsafe_allow_html=True)
-        uploaded_file = st.file_uploader(
-            "Select video file",
-            type=['mp4', 'avi', 'mov'],
-            help="Upload your teaching video (MP4, AVI, or MOV format, max 1GB)"
+        st.markdown('<p class="upload-header">📝 Upload Transcripts</p>', unsafe_allow_html=True)
+        st.markdown("Upload one transcript file for each video (must match video filenames)", unsafe_allow_html=True)
+        
+        transcript_files = st.file_uploader(
+            "Select transcript files",
+            type=['txt'],
+            accept_multiple_files=True,
+            help="Upload transcript files (one per video)"
         )
-        st.markdown('</div>', unsafe_allow_html=True)
+        
+        if transcript_files:
+            for transcript in transcript_files:
+                # Store transcripts with video filename (without extension) as key
+                base_name = os.path.splitext(transcript.name)[0]
+                uploaded_transcripts[base_name] = transcript
 
-        # Transcript upload section (conditional)
-        uploaded_transcript = None
-        if input_type == "Video + Manual Transcript":
-            st.markdown('<div class="upload-section">', unsafe_allow_html=True)
-            st.markdown('<p class="upload-header">📝 Upload Transcript</p>', unsafe_allow_html=True)
-            uploaded_transcript = st.file_uploader(
-                "Select transcript file",
-                type=['txt'],
-                help="Upload your transcript (TXT format)"
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
+    if uploaded_files:
+        # Create tabs for each video
+        video_tabs = st.tabs([f"Video {i+1}: {video.name}" for i, video in enumerate(uploaded_files)])
+        
+        # Process each video
+        for i, (video, tab) in enumerate(zip(uploaded_files, video_tabs)):
+            with tab:
+                st.markdown(f"### Processing: {video.name}")
+                
+                # Find matching transcript if needed
+                transcript = None
+                if input_type == "Video + Manual Transcript":
+                    base_name = os.path.splitext(video.name)[0]
+                    transcript = uploaded_transcripts.get(base_name)
+                    if not transcript:
+                        st.warning(f"No matching transcript found for {video.name}")
+                        continue
 
-        # Process video when uploaded
-        if uploaded_file:
-            if input_type == "Video + Manual Transcript" and not uploaded_transcript:
-                st.warning("Please upload both video and transcript files to continue.")
-                return
-                
-            # Only process if not already completed
-            if not st.session_state.processing_complete:
-                status_placeholder.info("Video uploaded, beginning processing...")
-                
-                # Add timer container
-                timer_container = st.empty()
-                start_time = time.time()
-                
-                st.markdown("""
-                    <div class="pulse" style="text-align: center;">
-                        <h3>Processing your video...</h3>
-                    </div>
-                """, unsafe_allow_html=True)
-                
-                # Create temp directory for processing
-                temp_dir = tempfile.mkdtemp()
-                video_path = os.path.join(temp_dir, uploaded_file.name)
-                
+                # Process video with progress tracking
                 try:
-                    # Save uploaded file with progress
-                    with st.status("Saving uploaded file...") as status:
-                        # Update sidebar status
-                        status_placeholder.info("Saving uploaded file...")
-                        progress_bar = st.progress(0)
+                    with st.status(f"Processing {video.name}...") as status:
+                        # Create temp directory for processing
+                        temp_dir = tempfile.mkdtemp()
+                        video_path = os.path.join(temp_dir, video.name)
                         
-                        # Save in chunks to show progress
-                        chunk_size = 1024 * 1024  # 1MB chunks
-                        file_size = len(uploaded_file.getbuffer())
-                        chunks = file_size // chunk_size + 1
-                        
+                        # Save and process video
                         with open(video_path, 'wb') as f:
-                            for i in range(chunks):
-                                # Update timer
-                                elapsed_time = time.time() - start_time
-                                minutes = int(elapsed_time // 60)
-                                seconds = int(elapsed_time % 60)
-                                timer_container.markdown(f"""
-                                    <div style="
-                                        background: linear-gradient(135deg, #f0f7ff 0%, #e5f0ff 100%);
-                                        padding: 15px;
-                                        border-radius: 8px;
-                                        margin: 10px 0;
-                                        border-left: 4px solid #1f77b4;
-                                        box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                                        <h3 style="margin:0;">⏱️ Processing Time</h3>
-                                        <p style="font-size: 1.2em; margin: 10px 0;">
-                                            Time elapsed: {minutes:02d}:{seconds:02d}
-                                        </p>
-                                    </div>
-                                """, unsafe_allow_html=True)
-                                
-                                start = i * chunk_size
-                                end = min(start + chunk_size, file_size)
-                                f.write(uploaded_file.getbuffer()[start:end])
-                                progress = (i + 1) / chunks
-                                status.update(label=f"Saving file: {progress:.1%}")
-                                progress_bar.progress(progress)
-                        
-                        status.update(label="File saved successfully!", state="complete")
-                    
-                    # Validate file size
-                    file_size = os.path.getsize(video_path) / (1024 * 1024 * 1024)
-                    if file_size > 1:
-                        st.error("File size exceeds 1GB limit. Please upload a smaller file.")
-                        return
-                    
-                    # Process video
-                    status_placeholder.info("Processing video and generating analysis...")
-                    
-                    process_container = st.container()
-                    with process_container:
-                        st.markdown("""
-                            <div class="processing-status">
-                                <h3>🎥 Processing Video</h3>
-                                <div class="status-details"></div>
-                            </div>
-                        """, unsafe_allow_html=True)
-                        
-                        # Create a background thread to update the timer
-                        def update_timer(timer_container):
-                            try:
-                                while st.session_state.timer_running:
-                                    if st.session_state.start_time is not None:
-                                        current_time = time.time()
-                                        elapsed_time = current_time - st.session_state.start_time
-                                        minutes = int(elapsed_time // 60)
-                                        seconds = int(elapsed_time % 60)
-                                        
-                                        timer_container.markdown(f"""
-                                            <div style="
-                                                background: linear-gradient(135deg, #f0f7ff 0%, #e5f0ff 100%);
-                                                padding: 15px;
-                                                border-radius: 8px;
-                                                margin: 10px 0;
-                                                border-left: 4px solid #1f77b4;
-                                                box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                                                <h3 style="margin:0;">⏱️ Processing Time</h3>
-                                                <p style="font-size: 1.2em; margin: 10px 0;">
-                                                    Time elapsed: {minutes:02d}:{seconds:02d}
-                                                </p>
-                                            </div>
-                                        """, unsafe_allow_html=True)
-                                    time.sleep(0.1)
-                            except Exception as e:
-                                logger.error(f"Timer update error: {e}")
-                        
-                        # Start timer update thread
-                        timer_thread = threading.Thread(target=update_timer)
-                        timer_thread.daemon = True
-                        timer_thread.start()
+                            f.write(video.getbuffer())
                         
                         evaluator = MentorEvaluator()
-                        st.session_state.evaluation_results = evaluator.evaluate_video(
-                            video_path,
-                            uploaded_transcript if input_type == "Video + Manual Transcript" else None
-                        )
-                        st.session_state.processing_complete = True
+                        results = evaluator.evaluate_video(video_path, transcript)
                         
-                        # Final timer update
-                        final_time = time.time() - start_time
-                        minutes = int(final_time // 60)
-                        seconds = int(final_time % 60)
-                        timer_container.markdown(f"""
-                            <div style="
-                                background: linear-gradient(135deg, #f0fff0 0%, #e5ffe5 100%);
-                                padding: 15px;
-                                border-radius: 8px;
-                                margin: 10px 0;
-                                border-left: 4px solid #28a745;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                                <h3 style="margin:0;">⏱️ Final Processing Time</h3>
-                                <p style="font-size: 1.2em; margin: 10px 0;">
-                                    Total time: {minutes:02d}:{seconds:02d}
-                                </p>
-                            </div>
-                        """, unsafe_allow_html=True)
+                        # Display results for this video
+                        display_evaluation(results)
                         
+                        # Add download buttons for this video's reports
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if st.download_button(
+                                f"📥 Download JSON Report - {video.name}",
+                                json.dumps(results, indent=2),
+                                f"evaluation_report_{video.name}.json",
+                                "application/json"
+                            ):
+                                st.success(f"JSON report for {video.name} downloaded successfully!")
+                        
+                        with col2:
+                            if st.download_button(
+                                f"📄 Download PDF Report - {video.name}",
+                                generate_pdf_report(results),
+                                f"evaluation_report_{video.name}.pdf",
+                                "application/pdf"
+                            ):
+                                st.success(f"PDF report for {video.name} downloaded successfully!")
+                        
+                        status.update(label=f"Completed processing {video.name}", state="complete")
+                
                 except Exception as e:
-                    status_placeholder.error(f"Error during processing: {str(e)}")
-                    st.error(f"Error during evaluation: {str(e)}")
-                    
+                    st.error(f"Error processing {video.name}: {str(e)}")
+                
                 finally:
                     # Clean up temp files
                     if 'temp_dir' in locals():
                         shutil.rmtree(temp_dir)
-            
-            # Display results if processing is complete
-            if st.session_state.processing_complete and st.session_state.evaluation_results:
-                status_placeholder.success("Analysis complete! Review results below.")
-                
-                # Display processing time in a nice format
-                processing_time = st.session_state.evaluation_results.get("processing_time", 0)
-                minutes = int(processing_time // 60)
-                seconds = int(processing_time % 60)
-                
-                # Add styled timer display
-                st.markdown("""
-                    <div style="
-                        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-                        padding: 15px;
-                        border-radius: 8px;
-                        margin: 10px 0;
-                        border-left: 4px solid #1f77b4;
-                        box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                        <h3 style="margin:0;">⏱️ Analysis Duration</h3>
-                        <p style="font-size: 1.2em; margin: 10px 0;">
-                            Total processing time: {} minutes and {} seconds
-                        </p>
-                    </div>
-                """.format(minutes, seconds), unsafe_allow_html=True)
-                
-                st.success("Analysis complete!")
-                display_evaluation(st.session_state.evaluation_results)
-                
-                # Add download options
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    if st.download_button(
-                        "📥 Download JSON Report",
-                        json.dumps(st.session_state.evaluation_results, indent=2),
-                        "evaluation_report.json",
-                        "application/json",
-                        help="Download the raw evaluation data in JSON format"
-                    ):
-                        st.success("JSON report downloaded successfully!")
-                
-                with col2:
-                    if st.download_button(
-                        "📄 Download Full Report (PDF)",
-                        generate_pdf_report(st.session_state.evaluation_results),
-                        "evaluation_report.pdf",
-                        "application/pdf",
-                        help="Download a formatted PDF report with detailed analysis"
-                    ):
-                        st.success("PDF report downloaded successfully!")
 
-                # After displaying evaluation results, add:
-                schedule_gpu_cleanup()
-                st.success("Analysis completed and GPU resources released")
+        # Add comparison section after all videos are processed
+        st.markdown("### 📊 Videos Comparison")
+        st.markdown("Compare key metrics across all processed videos:")
+        
+        # Create comparison metrics
+        comparison_data = []
+        for video, results in zip(uploaded_files, [tab.results for tab in video_tabs if hasattr(tab, 'results')]):
+            metrics = {
+                'Video': video.name,
+                'Speaking Rate (WPM)': results.get('speech_metrics', {}).get('speed', {}).get('wpm', 0),
+                'Fluency Score': results.get('speech_metrics', {}).get('fluency', {}).get('score', 0),
+                'Teaching Score': results.get('teaching', {}).get('overall_score', 0),
+                'Hiring Score': results.get('recommendations', {}).get('hiringRecommendation', {}).get('score', 0)
+            }
+            comparison_data.append(metrics)
+        
+        if comparison_data:
+            comparison_df = pd.DataFrame(comparison_data)
+            st.dataframe(comparison_df)
+            
+            # Add visualization
+            st.markdown("### 📈 Metrics Visualization")
+            metric_to_plot = st.selectbox(
+                "Select metric to visualize:",
+                ['Speaking Rate (WPM)', 'Fluency Score', 'Teaching Score', 'Hiring Score']
+            )
+            
+            # Create bar chart
+            fig = px.bar(comparison_df, x='Video', y=metric_to_plot,
+                        title=f'Comparison of {metric_to_plot} Across Videos')
+            st.plotly_chart(fig)
 
-        # Add Hiring Recommendation Section
-        if "hiringRecommendation" in recommendations:
-            st.markdown("""
-                <div class="hiring-card">
-                    <h4>🎯 Hiring Recommendation</h4>
-                    <div class="hiring-content">
-            """, unsafe_allow_html=True)
-            
-            hiring_data = recommendations["hiringRecommendation"]
-            score = hiring_data.get("score", 0)
-            
-            # Create a color gradient based on the score
-            if score >= 8:
-                score_color = "#28a745"  # Green for high scores
-                recommendation = "Strongly Recommended"
-            elif score >= 6:
-                score_color = "#ffc107"  # Yellow for medium scores
-                recommendation = "Recommended with Reservations"
-            else:
-                score_color = "#dc3545"  # Red for low scores
-                recommendation = "Not Recommended"
-            
-            # Display the score with a circular progress indicator
-            st.markdown(f"""
-                <div style="text-align: center; margin: 20px 0;">
-                    <div style="
-                        width: 150px;
-                        height: 150px;
-                        border-radius: 50%;
-                        border: 10px solid {score_color};
-                        margin: 0 auto;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        font-size: 48px;
-                        font-weight: bold;
-                        color: {score_color};">
-                        {score}/10
-                    </div>
-                    <div style="
-                        margin-top: 10px;
-                        font-size: 1.2em;
-                        font-weight: bold;
-                        color: {score_color};">
-                        {recommendation}
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            # Display reasons in columns
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("### ✅ Key Strengths")
-                strengths = hiring_data.get("strengths", [])
-                for strength in strengths:
-                    st.markdown(f"- {strength}")
-            
-            with col2:
-                st.markdown("### ⚠️ Areas of Concern")
-                concerns = hiring_data.get("concerns", [])
-                for concern in concerns:
-                    st.markdown(f"- {concern}")
-            
-            # Display detailed reasons
-            st.markdown("### 📝 Detailed Justification")
-            reasons = hiring_data.get("reasons", [])
-            for reason in reasons:
-                st.markdown(f"""
-                    <div class="reason-card">
-                        • {reason}
-                    </div>
-                """, unsafe_allow_html=True)
-            
-            st.markdown("</div></div>", unsafe_allow_html=True)
-
-        # Add the new CSS styles for the hiring recommendation section
-        st.markdown("""
-            <style>
-            .hiring-card {
-                background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-                padding: 20px;
-                border-radius: 8px;
-                margin: 15px 0;
-                border-left: 4px solid #1f77b4;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            }
-            
-            .hiring-content {
-                margin-top: 15px;
-            }
-            
-            .reason-card {
-                background: white;
-                padding: 15px;
-                margin: 10px 0;
-                border-radius: 8px;
-                border-left: 3px solid #1f77b4;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-                transition: transform 0.2s ease;
-            }
-            
-            .reason-card:hover {
-                transform: translateX(5px);
-            }
-            </style>
-        """, unsafe_allow_html=True)
-    except Exception as e:
-        st.error(f"Application error: {str(e)}")
+# Add CSS for multiple videos mode
+st.markdown("""
+    <style>
+    .multiple-videos .upload-section {
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        padding: 20px;
+        border-radius: 10px;
+        margin: 20px 0;
+        border-left: 4px solid #4a69bd;
+    }
+    
+    .video-tab {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin: 10px 0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    .comparison-section {
+        background: linear-gradient(135deg, #f0f7ff 0%, #e5f0ff 100%);
+        padding: 20px;
+        border-radius: 10px;
+        margin: 20px 0;
+        border-left: 4px solid #1f77b4;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
