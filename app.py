@@ -1332,8 +1332,6 @@ class MentorEvaluator:
                 '-c:a', 'pcm_s16le',  # Use simple audio codec
                 '-movflags', 'faststart',  # Optimize for streaming
                 '-threads', str(max(1, multiprocessing.cpu_count() - 1)),  # Use multiple threads
-                # Add memory optimization flags
-                '-max_memory', '500M',  # Limit ffmpeg memory usage
                 output_path
             ]
             
