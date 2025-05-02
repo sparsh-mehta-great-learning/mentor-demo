@@ -1129,14 +1129,17 @@ Metrics: {json.dumps(metrics)}
 Content Analysis: {json.dumps(content_analysis)}
 
 Analyze the teaching style and provide:
-1. A concise performance summary (2-3 paragraphs highlighting key strengths and areas for improvement)
-   - Include analysis of nervousness indicators:
-     * High frequency of filler words (>3/min)
-     * Speech errors (>1/min)
-     * Unnatural pauses (>12/min)
-     * Monotone speech (score >0.4)
-     * Unusual pitch patterns (outside 20-40% variation)
-     * Voice energy levels (amplitude outside 60-75 range)
+1. A simple and clear summary (2-3 short paragraphs) that:
+   - Uses everyday language anyone can understand
+   - Avoids technical terms and jargon
+   - Clearly states what went well and what needs work
+   - Includes these signs of nervousness in plain language:
+     * Using filler words (um, uh, like) more than 3 times per minute
+     * Making speech mistakes more than once per minute
+     * Taking too many pauses (more than 12 per minute)
+     * Speaking in a flat voice (monotone score above 0.4)
+     * Speaking with unusual voice patterns
+     * Speaking too quietly or too loudly
 2. Geography fit assessment
 3. Specific improvements needed (each must be categorized as COMMUNICATION, TEACHING, or TECHNICAL)
 4. Profile matching for different learner types (choose ONLY ONE best match)
@@ -1145,7 +1148,7 @@ Analyze the teaching style and provide:
 
 Required JSON structure:
 {{
-    "summary": "Comprehensive summary of teaching performance, strengths, and areas for improvement",
+    "summary": "Simple, clear summary using everyday language that anyone can understand",
     "geographyFit": "String describing geographical market fit",
     "improvements": [
         {{
@@ -1171,35 +1174,35 @@ Required JSON structure:
         {{
             "profile": "junior_technical",
             "match": false,
-            "reason": "Detailed explanation why this profile is not the best match"
+            "reason": "Simple explanation why this profile is not the best match"
         }},
         {{
             "profile": "senior_non_technical",
             "match": false,
-            "reason": "Detailed explanation why this profile is not the best match"
+            "reason": "Simple explanation why this profile is not the best match"
         }},
         {{
             "profile": "junior_expert",
             "match": false,
-            "reason": "Detailed explanation why this profile is not the best match"
+            "reason": "Simple explanation why this profile is not the best match"
         }},
         {{
             "profile": "senior_expert",
             "match": false,
-            "reason": "Detailed explanation why this profile is not the best match"
+            "reason": "Simple explanation why this profile is not the best match"
         }}
     ]
 }}
 
 Consider:
-- Teaching pace and complexity level
-- Balance of technical vs business context
-- Depth of code explanations
-- Use of examples and analogies
-- Engagement style and question handling confidence
-- Communication metrics
-- Teaching assessment scores
-- Nervousness indicators and their impact on teaching effectiveness"""
+- How well the teaching flows
+- If examples help explain things
+- If code explanations make sense
+- If students stay interested
+- How well questions are answered
+- How clearly they speak
+- How well they teach
+- If they seem nervous while teaching"""
 
 class CostCalculator:
     """Calculates API and processing costs"""
