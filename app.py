@@ -3849,6 +3849,9 @@ def handle_multiple_videos_analysis(input_type):
         temp_dirs = []  # Track all temp directories
         
         try:
+            # Initialize evaluator once for all videos
+            evaluator = MentorEvaluator()
+            
             # Process each video
             for i, (video, tab) in enumerate(zip(uploaded_files, video_tabs)):
                 with tab:
@@ -3874,7 +3877,7 @@ def handle_multiple_videos_analysis(input_type):
                             with open(video_path, 'wb') as f:
                                 f.write(video.getbuffer())
                             
-                            evaluator = MentorEvaluator()
+                            # Process video
                             results = evaluator.evaluate_video(video_path, transcript)
                             all_results.append(results)
                             
@@ -3902,9 +3905,18 @@ def handle_multiple_videos_analysis(input_type):
                                     st.success(f"PDF report for {video.name} downloaded successfully!")
                             
                             status.update(label=f"Completed processing {video.name}", state="complete")
+                            
+                            # Manual garbage collection after each video
+                            gc.collect()
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
 
                     except Exception as e:
                         st.error(f"Error processing {video.name}: {str(e)}")
+                        # Try to recover resources on error
+                        gc.collect()
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
 
             # Add comparison section after all videos are processed
             if len(all_results) > 1:
@@ -3948,8 +3960,22 @@ def handle_multiple_videos_analysis(input_type):
                 except Exception as e:
                     logger.warning(f"Failed to remove temporary directory {temp_dir}: {e}")
             
-            # Clear GPU resources only after all videos are processed
-            clear_gpu_resources()
+            # Final cleanup after all videos are processed
+            try:
+                # Clear GPU memory
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                
+                # Clear any cached models
+                if hasattr(evaluator, 'feature_extractor'):
+                    if hasattr(evaluator.feature_extractor, 'accent_classifier'):
+                        evaluator.feature_extractor.accent_classifier = None
+                
+                # Force garbage collection
+                gc.collect()
+                
+            except Exception as e:
+                logger.error(f"Error during final cleanup: {e}")
 
 # Add CSS for multiple videos mode
 st.markdown("""
