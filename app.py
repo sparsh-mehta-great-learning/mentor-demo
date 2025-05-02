@@ -3725,10 +3725,81 @@ def main():
         st.error(f"Application error: {str(e)}")
 
 def handle_single_video_analysis(input_type):
-    # Move existing video processing code here
-    # ... (existing single video upload and processing code)
+    """Handle single video analysis mode"""
+        # Video upload section
+        st.markdown('<div class="upload-section">', unsafe_allow_html=True)
+        st.markdown('<p class="upload-header">📹 Upload Teaching Video</p>', unsafe_allow_html=True)
+        uploaded_file = st.file_uploader(
+            "Select video file",
+            type=['mp4', 'avi', 'mov'],
+            help="Upload your teaching video (MP4, AVI, or MOV format, max 1GB)"
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Transcript upload section (conditional)
+        uploaded_transcript = None
+        if input_type == "Video + Manual Transcript":
+            st.markdown('<div class="upload-section">', unsafe_allow_html=True)
+            st.markdown('<p class="upload-header">📝 Upload Transcript</p>', unsafe_allow_html=True)
+            uploaded_transcript = st.file_uploader(
+                "Select transcript file",
+                type=['txt'],
+                help="Upload your transcript (TXT format)"
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        # Process video when uploaded
+        if uploaded_file:
+            if input_type == "Video + Manual Transcript" and not uploaded_transcript:
+                st.warning("Please upload both video and transcript files to continue.")
+                return
+                
+        # Process the single video
+        try:
+                # Create temp directory for processing
+                temp_dir = tempfile.mkdtemp()
+                video_path = os.path.join(temp_dir, uploaded_file.name)
+                
+            # Save and process video
+                        with open(video_path, 'wb') as f:
+                f.write(uploaded_file.getbuffer())
+            
+            evaluator = MentorEvaluator()
+            results = evaluator.evaluate_video(video_path, uploaded_transcript)
+            
+            # Display results
+            display_evaluation(results)
+            
+            # Add download buttons
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.download_button(
+                    "📥 Download JSON Report",
+                    json.dumps(results, indent=2),
+                    "evaluation_report.json",
+                    "application/json"
+                ):
+                    st.success("JSON report downloaded successfully!")
+            
+            with col2:
+                if st.download_button(
+                    "📄 Download PDF Report",
+                    generate_pdf_report(results),
+                    "evaluation_report.pdf",
+                    "application/pdf"
+                ):
+                    st.success("PDF report downloaded successfully!")
+            
+        except Exception as e:
+            st.error(f"Error processing video: {str(e)}")
+        
+        finally:
+            # Clean up temp files
+            if 'temp_dir' in locals():
+                shutil.rmtree(temp_dir)
 
 def handle_multiple_videos_analysis(input_type):
+    """Handle multiple videos analysis mode"""
     st.markdown('<div class="upload-section multiple-videos">', unsafe_allow_html=True)
     st.markdown('<p class="upload-header">📹 Upload Teaching Videos</p>', unsafe_allow_html=True)
     
@@ -3764,6 +3835,9 @@ def handle_multiple_videos_analysis(input_type):
         # Create tabs for each video
         video_tabs = st.tabs([f"Video {i+1}: {video.name}" for i, video in enumerate(uploaded_files)])
         
+        # Store results for comparison
+        all_results = []
+        
         # Process each video
         for i, (video, tab) in enumerate(zip(uploaded_files, video_tabs)):
             with tab:
@@ -3791,23 +3865,24 @@ def handle_multiple_videos_analysis(input_type):
                         
                         evaluator = MentorEvaluator()
                         results = evaluator.evaluate_video(video_path, transcript)
+                        all_results.append(results)
                         
                         # Display results for this video
                         display_evaluation(results)
                         
                         # Add download buttons for this video's reports
                         col1, col2 = st.columns(2)
-                        with col1:
-                            if st.download_button(
+                with col1:
+                    if st.download_button(
                                 f"📥 Download JSON Report - {video.name}",
                                 json.dumps(results, indent=2),
                                 f"evaluation_report_{video.name}.json",
                                 "application/json"
                             ):
                                 st.success(f"JSON report for {video.name} downloaded successfully!")
-                        
-                        with col2:
-                            if st.download_button(
+                
+                with col2:
+                    if st.download_button(
                                 f"📄 Download PDF Report - {video.name}",
                                 generate_pdf_report(results),
                                 f"evaluation_report_{video.name}.pdf",
@@ -3816,8 +3891,8 @@ def handle_multiple_videos_analysis(input_type):
                                 st.success(f"PDF report for {video.name} downloaded successfully!")
                         
                         status.update(label=f"Completed processing {video.name}", state="complete")
-                
-                except Exception as e:
+
+    except Exception as e:
                     st.error(f"Error processing {video.name}: {str(e)}")
                 
                 finally:
@@ -3826,36 +3901,37 @@ def handle_multiple_videos_analysis(input_type):
                         shutil.rmtree(temp_dir)
 
         # Add comparison section after all videos are processed
-        st.markdown("### 📊 Videos Comparison")
-        st.markdown("Compare key metrics across all processed videos:")
-        
-        # Create comparison metrics
-        comparison_data = []
-        for video, results in zip(uploaded_files, [tab.results for tab in video_tabs if hasattr(tab, 'results')]):
-            metrics = {
-                'Video': video.name,
-                'Speaking Rate (WPM)': results.get('speech_metrics', {}).get('speed', {}).get('wpm', 0),
-                'Fluency Score': results.get('speech_metrics', {}).get('fluency', {}).get('score', 0),
-                'Teaching Score': results.get('teaching', {}).get('overall_score', 0),
-                'Hiring Score': results.get('recommendations', {}).get('hiringRecommendation', {}).get('score', 0)
-            }
-            comparison_data.append(metrics)
-        
-        if comparison_data:
-            comparison_df = pd.DataFrame(comparison_data)
-            st.dataframe(comparison_df)
+        if len(all_results) > 1:
+            st.markdown("### 📊 Videos Comparison")
+            st.markdown("Compare key metrics across all processed videos:")
             
-            # Add visualization
-            st.markdown("### 📈 Metrics Visualization")
-            metric_to_plot = st.selectbox(
-                "Select metric to visualize:",
-                ['Speaking Rate (WPM)', 'Fluency Score', 'Teaching Score', 'Hiring Score']
-            )
+            # Create comparison metrics
+            comparison_data = []
+            for video, results in zip(uploaded_files, all_results):
+                metrics = {
+                    'Video': video.name,
+                    'Speaking Rate (WPM)': results.get('speech_metrics', {}).get('speed', {}).get('wpm', 0),
+                    'Fluency Score': results.get('speech_metrics', {}).get('fluency', {}).get('score', 0),
+                    'Teaching Score': results.get('teaching', {}).get('overall_score', 0),
+                    'Hiring Score': results.get('recommendations', {}).get('hiringRecommendation', {}).get('score', 0)
+                }
+                comparison_data.append(metrics)
             
-            # Create bar chart
-            fig = px.bar(comparison_df, x='Video', y=metric_to_plot,
-                        title=f'Comparison of {metric_to_plot} Across Videos')
-            st.plotly_chart(fig)
+            if comparison_data:
+                comparison_df = pd.DataFrame(comparison_data)
+                st.dataframe(comparison_df)
+                
+                # Add visualization
+                st.markdown("### 📈 Metrics Visualization")
+                metric_to_plot = st.selectbox(
+                    "Select metric to visualize:",
+                    ['Speaking Rate (WPM)', 'Fluency Score', 'Teaching Score', 'Hiring Score']
+                )
+                
+                # Create bar chart
+                fig = px.bar(comparison_df, x='Video', y=metric_to_plot,
+                            title=f'Comparison of {metric_to_plot} Across Videos')
+                st.plotly_chart(fig)
 
 # Add CSS for multiple videos mode
 st.markdown("""
