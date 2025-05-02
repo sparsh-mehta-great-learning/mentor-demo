@@ -1133,7 +1133,7 @@ Metrics: {json.dumps(metrics)}
 Content Analysis: {json.dumps(content_analysis)}
 
 Analyze the teaching style and provide:
-1. A simple and clear summary (2-3 short paragraphs) that:
+1. A simple and clear summary (3-5 short paragraphs) that:
    - Uses everyday language anyone can understand
    - Avoids technical terms and jargon
    - Clearly states what went well and what needs work
@@ -1155,7 +1155,7 @@ Analyze the teaching style and provide:
    - Technical expertise
    - Student engagement
    - Professional demeanor
-   - Provide 3-4 key reasons for the score
+   - Provide 3-4 key reasons for the score for each i.e. positive or negative
 
 Required JSON structure:
 {{
