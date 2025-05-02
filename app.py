@@ -3174,15 +3174,14 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
 
             table = Table(table_data, colWidths=[200, 100])
             style = TableStyle([
-                ('SPAN', (0, 0), (1, 0)), # Span title
-                ('BACKGROUND', (0, 1), (1, 1), colors.HexColor('#4a69bd')), # Header background
+                ('SPAN', (0, 0), (1, 0)),  # Span title
+                ('BACKGROUND', (0, 1), (1, 1), colors.HexColor('#4a69bd')),  # Header background
                 ('TEXTCOLOR', (0, 1), (1, 1), colors.whitesmoke),
                 ('ALIGN', (0, 1), (1, 1), 'CENTER'),
                 ('FONTNAME', (0, 1), (1, 1), 'Helvetica-Bold'),
                 ('BOTTOMPADDING', (0, 1), (1, 1), 8),
                 ('GRID', (0, 1), (-1, -1), 0.5, colors.grey),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                # Alternating row colors
                 ('ROWBACKGROUNDS', (0, 2), (-1, -1), [colors.whitesmoke, colors.white])
             ])
             table.setStyle(style)
