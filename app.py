@@ -1951,400 +1951,131 @@ def display_evaluation(evaluation: Dict[str, Any]):
             teaching_data = evaluation.get("teaching", {})
             content_analyzer = ContentAnalyzer(st.secrets["OPENAI_API_KEY"])
             
-            # Display Concept Assessment with enhanced citation context
-            with st.expander("📚 Concept Assessment", expanded=True):
-                concept_data = teaching_data.get("Concept Assessment", {})
+            # Create sections instead of expanders
+            st.subheader("📚 Concept Assessment")
+            concept_data = teaching_data.get("Concept Assessment", {})
+            
+            for category, details in concept_data.items():
+                if category == "Question Handling":
+                    continue  # Handle Question Handling separately
                 
-                for category, details in concept_data.items():
-                    score = details.get("Score", 0)
-                    citations = details.get("Citations", [])
-                    
-                    st.markdown(f"""
-                        <div class="teaching-card">
-                            <div class="teaching-header">
-                                <span class="category-name">{category}</span>
-                                <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
-                                    {'✅ Pass' if score == 1 else '❌ Needs Work'}
-                                </span>
-                            </div>
+                score = details.get("Score", 0)
+                citations = details.get("Citations", [])
+                
+                st.markdown(f"""
+                    <div class="teaching-card">
+                        <div class="teaching-header">
+                            <span class="category-name">{category}</span>
+                            <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
+                                {'✅ Pass' if score == 1 else '❌ Needs Work'}
+                            </span>
                         </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if citations:
-                        st.markdown("##### 📝 Supporting Evidence")
-                        for citation in citations:
-                            # Extract timestamp if available
-                            timestamp_match = re.match(r'\[(\d+:\d+)\]', citation)
-                            timestamp = timestamp_match.group(1) if timestamp_match else "00:00"
-                            
-                            # Extract the actual quote
-                            quote = re.sub(r'\[\d+:\d+\]\s*', '', citation).strip("'")
-                            
-                            # Find the quote in the transcript
-                            transcript = evaluation.get("transcript", "")
-                            if transcript and quote in transcript:
-                                # Get surrounding context (approximately 100 characters before and after)
-                                quote_index = transcript.find(quote)
-                                start_index = max(0, quote_index - 200)
-                                end_index = min(len(transcript), quote_index + len(quote) + 200)
-                                
-                                # Get the context
-                                context = transcript[start_index:end_index]
-                                
-                                # Add ellipsis if we truncated the context
-                                if start_index > 0:
-                                    context = "..." + context
-                                if end_index < len(transcript):
-                                    context = context + "..."
-                                
-                                # Highlight the quote within the context
-                                highlighted_context = context.replace(quote, f'<span class="highlight">{quote}</span>')
-                                
-                                st.markdown(f"""
-                                    <div class="citation-box">
-                                        <div class="citation-timestamp">🕒 Timestamp: {timestamp}</div>
-                                        <div class="citation-context">
-                                            {highlighted_context}
-                                        </div>
-                                    </div>
-                                """, unsafe_allow_html=True)
-                            else:
-                                # Fallback to displaying just the citation
-                                st.markdown(f"""
-                                    <div class="citation-box">
-                                        <div class="citation-timestamp">🕒 Timestamp: {timestamp}</div>
-                                        <div class="citation-text">"{quote}"</div>
-                                    </div>
-                                """, unsafe_allow_html=True)
-
-            # Update the CSS for better citation display
-            st.markdown("""
-                <style>
-                .citation-box {
-                    background: #f8f9fa;
-                    border-left: 4px solid #1f77b4;
-                    padding: 15px;
-                    margin: 15px 0;
-                    border-radius: 4px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                    transition: transform 0.2s ease;
-                }
+                    </div>
+                """, unsafe_allow_html=True)
                 
-                .citation-box:hover {
-                    transform: translateX(5px);
-                }
-                
-                .citation-timestamp {
-                    color: #6c757d;
-                    font-size: 0.9em;
-                    font-weight: bold;
-                    margin-bottom: 8px;
-                }
-                
-                .citation-context {
-                    color: #212529;
-                    line-height: 1.6;
-                    padding: 12px;
-                    background: white;
-                    border-radius: 4px;
-                    border: 1px solid #e9ecef;
-                    font-size: 1.1em;
-                    margin-top: 8px;
-                }
-                
-                .highlight {
-                    background-color: #fff3cd;
-                    padding: 2px 4px;
-                    border-radius: 2px;
-                    font-weight: bold;
-                    color: #856404;
-                }
-                
-                .citation-text {
-                    font-style: italic;
-                    color: #495057;
-                    padding: 10px;
-                    background: white;
-                    border-radius: 4px;
-                    border: 1px solid #e9ecef;
-                }
-                
-                .teaching-card {
-                    background: white;
-                    border-radius: 8px;
-                    padding: 15px;
-                    margin: 15px 0;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }
-                
-                .teaching-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    margin-bottom: 10px;
-                }
-                
-                .category-name {
-                    font-size: 1.2em;
-                    font-weight: bold;
-                    color: #2c3e50;
-                }
-                
-                .score-badge {
-                    padding: 5px 10px;
-                    border-radius: 15px;
-                    font-weight: bold;
-                }
-                
-                .score-pass {
-                    background-color: #d4edda;
-                    color: #155724;
-                }
-                
-                .score-fail {
-                    background-color: #f8d7da;
-                    color: #721c24;
-                }
-                </style>
-            """, unsafe_allow_html=True)
-
-            # Display Code Assessment with enhanced citation context
-            with st.expander("💻 Code Assessment", expanded=True):
-                code_data = teaching_data.get("Code Assessment", {})
-                
-                for category, details in code_data.items():
-                    score = details.get("Score", 0)
-                    citations = details.get("Citations", [])
-                    
-                    st.markdown(f"""
-                        <div class="teaching-card">
-                            <div class="teaching-header">
-                                <span class="category-name">{category}</span>
-                                <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
-                                    {'✅ Pass' if score == 1 else '❌ Needs Work'}
-                                </span>
-                            </div>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if citations:
-                        st.markdown("##### 📝 Code Examples & Explanations")
-                        for citation in citations:
-                            # Extract timestamp if available
-                            timestamp_match = re.match(r'\[(\d+:\d+)\]', citation)
-                            timestamp = timestamp_match.group(1) if timestamp_match else "00:00"
-                            
-                            # Extract the actual quote
-                            quote = re.sub(r'\[\d+:\d+\]\s*', '', citation).strip("'")
-                            
-                            # Find the quote in the transcript
-                            transcript = evaluation.get("transcript", "")
-                            if transcript and quote in transcript:
-                                # Get surrounding context
-                                quote_index = transcript.find(quote)
-                                start_index = max(0, quote_index - 200)
-                                end_index = min(len(transcript), quote_index + len(quote) + 200)
-                                
-                                context = transcript[start_index:end_index]
-                                
-                                if start_index > 0:
-                                    context = "..." + context
-                                if end_index < len(transcript):
-                                    context = context + "..."
-                                
-                                highlighted_context = context.replace(quote, f'<span class="highlight-code">{quote}</span>')
-                                
-                                st.markdown(f"""
-                                    <div class="code-citation-box">
-                                        <div class="citation-timestamp">🕒 Timestamp: {timestamp}</div>
-                                        <div class="code-citation-context">
-                                            {highlighted_context}
-                                        </div>
-                                    </div>
-                                """, unsafe_allow_html=True)
-                            else:
-                                st.markdown(f"""
-                                    <div class="code-citation-box">
-                                        <div class="citation-timestamp">🕒 Timestamp: {timestamp}</div>
-                                        <div class="citation-text">"{quote}"</div>
-                                    </div>
-                                """, unsafe_allow_html=True)
-
-            # Display Question Handling Assessment with enhanced citation context
-            with st.expander("❓ Question Handling Assessment", expanded=True):
-                question_data = concept_data.get("Question Handling", {})
-                if question_data:
-                    main_score = question_data.get("Score", 0)
-                    main_citations = question_data.get("Citations", [])
-                    details = question_data.get("Details", {})
-                    
-                    st.markdown(f"""
-                        <div class="teaching-card">
-                            <div class="teaching-header">
-                                <span class="category-name">Overall Question Handling</span>
-                                <span class="score-badge {'score-pass' if main_score == 1 else 'score-fail'}">
-                                    {'✅ Pass' if main_score == 1 else '❌ Needs Work'}
-                                </span>
-                            </div>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # Display main citations
-                    if main_citations:
-                        st.markdown("##### 📝 General Question Handling Examples")
-                        for citation in main_citations:
-                            # Process citation with context (same as above)
-                            timestamp_match = re.match(r'\[(\d+:\d+)\]', citation)
-                            timestamp = timestamp_match.group(1) if timestamp_match else "00:00"
-                            quote = re.sub(r'\[\d+:\d+\]\s*', '', citation).strip("'")
-                            
-                            transcript = evaluation.get("transcript", "")
-                            if transcript and quote in transcript:
-                                quote_index = transcript.find(quote)
-                                start_index = max(0, quote_index - 200)
-                                end_index = min(len(transcript), quote_index + len(quote) + 200)
-                                context = transcript[start_index:end_index]
-                                
-                                if start_index > 0:
-                                    context = "..." + context
-                                if end_index < len(transcript):
-                                    context = context + "..."
-                                
-                                highlighted_context = context.replace(quote, f'<span class="highlight-question">{quote}</span>')
-                                
-                                st.markdown(f"""
-                                    <div class="question-citation-box">
-                                        <div class="citation-timestamp">🕒 Timestamp: {timestamp}</div>
-                                        <div class="question-citation-context">
-                                            {highlighted_context}
-                                        </div>
-                                    </div>
-                                """, unsafe_allow_html=True)
-                    
-                    # Display detailed assessments
-                    for aspect, aspect_details in details.items():
-                        score = aspect_details.get("Score", 0)
-                        citations = aspect_details.get("Citations", [])
+                if citations:
+                    st.markdown("##### 📝 Supporting Evidence")
+                    for citation in citations:
+                        timestamp_match = re.match(r'\[(\d+:\d+)\]', citation)
+                        timestamp = timestamp_match.group(1) if timestamp_match else "00:00"
+                        quote = re.sub(r'\[\d+:\d+\]\s*', '', citation).strip("'")
                         
                         st.markdown(f"""
-                            <div class="question-detail-card">
-                                <div class="detail-header">
-                                    <span class="detail-name">{aspect}</span>
-                                    <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
-                                        {'✅ Pass' if score == 1 else '❌ Needs Work'}
-                                    </span>
-                                </div>
+                            <div class="citation-box">
+                                <div class="citation-timestamp">🕒 {timestamp}</div>
+                                <div class="citation-text">{quote}</div>
                             </div>
                         """, unsafe_allow_html=True)
+            
+            # Code Assessment Section
+            st.subheader("💻 Code Assessment")
+            code_data = teaching_data.get("Code Assessment", {})
+            
+            for category, details in code_data.items():
+                score = details.get("Score", 0)
+                citations = details.get("Citations", [])
+                
+                st.markdown(f"""
+                    <div class="teaching-card">
+                        <div class="teaching-header">
+                            <span class="category-name">{category}</span>
+                            <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
+                                {'✅ Pass' if score == 1 else '❌ Needs Work'}
+                            </span>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                if citations:
+                    st.markdown("##### 📝 Code Examples & Explanations")
+                    for citation in citations:
+                        timestamp_match = re.match(r'\[(\d+:\d+)\]', citation)
+                        timestamp = timestamp_match.group(1) if timestamp_match else "00:00"
+                        quote = re.sub(r'\[\d+:\d+\]\s*', '', citation).strip("'")
                         
-                        if citations:
-                            for citation in citations:
-                                # Process citation with context (same as above)
-                                timestamp_match = re.match(r'\[(\d+:\d+)\]', citation)
-                                timestamp = timestamp_match.group(1) if timestamp_match else "00:00"
-                                quote = re.sub(r'\[\d+:\d+\]\s*', '', citation).strip("'")
-                                
-                                transcript = evaluation.get("transcript", "")
-                                if transcript and quote in transcript:
-                                    quote_index = transcript.find(quote)
-                                    start_index = max(0, quote_index - 200)
-                                    end_index = min(len(transcript), quote_index + len(quote) + 200)
-                                    context = transcript[start_index:end_index]
-                                    
-                                    if start_index > 0:
-                                        context = "..." + context
-                                    if end_index < len(transcript):
-                                        context = context + "..."
-                                    
-                                    highlighted_context = context.replace(quote, f'<span class="highlight-question">{quote}</span>')
-                                    
-                                    st.markdown(f"""
-                                        <div class="question-detail-citation-box">
-                                            <div class="citation-timestamp">🕒 Timestamp: {timestamp}</div>
-                                            <div class="question-citation-context">
-                                                {highlighted_context}
-                                            </div>
-                                        </div>
-                                    """, unsafe_allow_html=True)
-
-            # Add additional CSS for code and question handling sections
-            st.markdown("""
-                <style>
-                /* Code Assessment Styles */
-                .code-citation-box {
-                    background: #f8f9fa;
-                    border-left: 4px solid #28a745;
-                    padding: 15px;
-                    margin: 15px 0;
-                    border-radius: 4px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                    transition: transform 0.2s ease;
-                }
+                        st.markdown(f"""
+                            <div class="code-citation-box">
+                                <div class="citation-timestamp">🕒 {timestamp}</div>
+                                <div class="code-citation-text">{quote}</div>
+                            </div>
+                        """, unsafe_allow_html=True)
+            
+            # Question Handling Section
+            st.subheader("❓ Question Handling Assessment")
+            question_data = concept_data.get("Question Handling", {})
+            if question_data:
+                main_score = question_data.get("Score", 0)
+                main_citations = question_data.get("Citations", [])
+                details = question_data.get("Details", {})
                 
-                .code-citation-box:hover {
-                    transform: translateX(5px);
-                }
+                # Display main score and citations
+                st.markdown(f"""
+                    <div class="teaching-card">
+                        <div class="teaching-header">
+                            <span class="category-name">Overall Question Handling</span>
+                            <span class="score-badge {'score-pass' if main_score == 1 else 'score-fail'}">
+                                {'✅ Pass' if main_score == 1 else '❌ Needs Work'}
+                            </span>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
                 
-                .highlight-code {
-                    background-color: #e8f5e9;
-                    padding: 2px 4px;
-                    border-radius: 2px;
-                    font-weight: bold;
-                    color: #2e7d32;
-                }
+                # Display citations
+                if main_citations:
+                    st.markdown("##### 📝 Examples")
+                    for citation in main_citations:
+                        timestamp_match = re.match(r'\[(\d+:\d+)\]', citation)
+                        timestamp = timestamp_match.group(1) if timestamp_match else "00:00"
+                        quote = re.sub(r'\[\d+:\d+\]\s*', '', citation).strip("'")
+                        
+                        st.markdown(f"""
+                            <div class="question-citation-box">
+                                <div class="citation-timestamp">🕒 {timestamp}</div>
+                                <div class="question-citation-text">{quote}</div>
+                            </div>
+                        """, unsafe_allow_html=True)
                 
-                /* Question Handling Styles */
-                .question-citation-box {
-                    background: #f8f9fa;
-                    border-left: 4px solid #9c27b0;
-                    padding: 15px;
-                    margin: 15px 0;
-                    border-radius: 4px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                    transition: transform 0.2s ease;
-                }
-                
-                .question-citation-box:hover {
-                    transform: translateX(5px);
-                }
-                
-                .highlight-question {
-                    background-color: #f3e5f5;
-                    padding: 2px 4px;
-                    border-radius: 2px;
-                    font-weight: bold;
-                    color: #6a1b9a;
-                }
-                
-                .question-detail-card {
-                    background: #f8f9fa;
-                    border-radius: 8px;
-                    padding: 12px;
-                    margin: 10px 0;
-                    border-left: 4px solid #9c27b0;
-                }
-                
-                .detail-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                }
-                
-                .detail-name {
-                    font-size: 1.1em;
-                    font-weight: bold;
-                    color: #4a148c;
-                }
-                
-                .question-detail-citation-box {
-                    background: white;
-                    border-left: 3px solid #ce93d8;
-                    padding: 12px;
-                    margin: 10px 0;
-                    border-radius: 4px;
-                }
-                </style>
-            """, unsafe_allow_html=True)
+                # Display detailed assessments in columns
+                if details:
+                    cols = st.columns(2)
+                    for i, (aspect, aspect_details) in enumerate(details.items()):
+                        with cols[i % 2]:
+                            score = aspect_details.get("Score", 0)
+                            citations = aspect_details.get("Citations", [])
+                            
+                            st.markdown(f"""
+                                <div class="question-detail-card">
+                                    <div class="detail-header">
+                                        <span class="detail-name">{aspect}</span>
+                                        <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
+                                            {'✅ Pass' if score == 1 else '❌ Needs Work'}
+                                        </span>
+                                    </div>
+                                    <div class="detail-citations">
+                                        {chr(10).join(f'<div class="detail-citation">{citation}</div>' for citation in citations)}
+                                    </div>
+                                </div>
+                            """, unsafe_allow_html=True)
 
         with tabs[2]:
             st.header("Recommendations")
