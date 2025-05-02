@@ -36,6 +36,8 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle, TA_CENTER,
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from io import BytesIO
 import plotly.express as px
+import psutil
+import GPUtil
 
 # Filter out ScriptRunContext warnings
 warnings.filterwarnings('ignore', '.*ScriptRunContext!.*')
@@ -1313,7 +1315,7 @@ class MentorEvaluator:
         self._cache[key] = (time.time(), value)
 
     def _extract_audio(self, video_path: str, output_path: str, progress_callback=None) -> str:
-        """Extract audio from video with optimized settings"""
+        """Extract audio with improved memory management"""
         try:
             if progress_callback:
                 progress_callback(0.1, "Checking dependencies...")
@@ -1327,10 +1329,11 @@ class MentorEvaluator:
                 '-f', 'wav',     # Output format
                 '-v', 'warning', # Reduce verbosity
                 '-y',           # Overwrite output file
-                # Add these optimizations:
                 '-c:a', 'pcm_s16le',  # Use simple audio codec
                 '-movflags', 'faststart',  # Optimize for streaming
                 '-threads', str(max(1, multiprocessing.cpu_count() - 1)),  # Use multiple threads
+                # Add memory optimization flags
+                '-max_memory', '500M',  # Limit ffmpeg memory usage
                 output_path
             ]
             
@@ -1387,8 +1390,12 @@ class MentorEvaluator:
             raise AudioProcessingError(f"Audio preprocessing failed: {str(e)}")
 
     def evaluate_video(self, video_path: str, transcript_file: Optional[str] = None) -> Dict[str, Any]:
-        start_time = time.time()  # Start timing
         try:
+            # Add memory monitoring
+            monitor_memory_usage()
+            
+            start_time = time.time()
+            
             # Add input validation
             if not os.path.exists(video_path):
                 raise FileNotFoundError(f"Video file not found: {video_path}")
@@ -1464,6 +1471,12 @@ class MentorEvaluator:
                     end_time = time.time()  # End timing
                     duration = end_time - start_time
                     
+                    # Clear GPU memory after major operations
+                    clear_gpu_memory()
+                    
+                    # Monitor memory again
+                    monitor_memory_usage()
+                    
                     return {
                         "audio_features": audio_features,
                         "transcript": transcript,
@@ -1483,9 +1496,10 @@ class MentorEvaluator:
                         logger.warning(f"Failed to remove temporary file {temp_file}: {e}")
 
         except Exception as e:
-            end_time = time.time()  # Capture time even on error
-            logger.error(f"Error in video evaluation (took {end_time - start_time:.2f}s): {e}")
-            raise RuntimeError(f"Analysis failed: {str(e)}")
+            logger.error(f"Error in video evaluation: {e}")
+            # Clear memory on error
+            clear_gpu_memory()
+            raise
 
     def _transcribe_audio(self, audio_path: str, progress_callback=None) -> str:
         """Transcribe audio using Whisper with direct approach and timing"""
@@ -1709,6 +1723,43 @@ class MentorEvaluator:
 
         except Exception as e:
             logger.error(f"Error in speech metrics evaluation: {e}")
+            raise
+
+    def process_in_batches(self, audio: np.ndarray, sr: int, batch_duration: int = 300) -> List[Dict[str, Any]]:
+        """Process audio in batches to manage memory better
+        
+        Args:
+            audio: Audio array
+            sr: Sample rate
+            batch_duration: Duration of each batch in seconds
+        
+        Returns:
+            List of results for each batch
+        """
+        try:
+            # Calculate samples per batch
+            samples_per_batch = sr * batch_duration
+            total_samples = len(audio)
+            
+            results = []
+            
+            for start in range(0, total_samples, samples_per_batch):
+                # Get batch
+                end = min(start + samples_per_batch, total_samples)
+                batch = audio[start:end]
+                
+                # Process batch
+                batch_results = self.feature_extractor.extract_features(batch, sr)
+                results.append(batch_results)
+                
+                # Clear memory after each batch
+                clear_gpu_memory()
+                gc.collect()
+                
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error in batch processing: {e}")
             raise
 
 def validate_video_file(file_path: str):
@@ -3430,8 +3481,8 @@ def clear_gpu_resources():
 def schedule_gpu_cleanup(delay_minutes=15):
     """
     Schedule GPU cleanup after specified delay in minutes.
-    
-    Args:
+        
+        Args:
         delay_minutes: Number of minutes to wait before clearing GPU resources
     """
     import threading
@@ -3451,8 +3502,8 @@ def schedule_gpu_cleanup(delay_minutes=15):
 
 def check_dependencies() -> List[str]:
     """Check if all required system dependencies are installed.
-    
-    Returns:
+            
+        Returns:
         List[str]: List of missing dependencies
     """
     missing_deps = []
@@ -3466,6 +3517,53 @@ def check_dependencies() -> List[str]:
     # Add more dependency checks here if needed
     
     return missing_deps
+
+def clear_gpu_memory():
+    """Clear GPU memory more aggressively"""
+    try:
+        import torch
+        if torch.cuda.is_available():
+            # Clear PyTorch cache
+            torch.cuda.empty_cache()
+            
+            # Reset all PyTorch modules
+            for obj in gc.get_objects():
+                try:
+                    if torch.is_tensor(obj):
+                        del obj
+                except Exception:
+                    pass
+            
+            # Force garbage collection
+            gc.collect()
+            
+            logger.info("GPU memory cleared successfully")
+    except Exception as e:
+        logger.error(f"Error clearing GPU memory: {e}")
+
+def monitor_memory_usage():
+    """Monitor memory usage and log warnings"""
+    try:
+        import psutil
+        import GPUtil
+        
+        # Check system memory
+        memory = psutil.virtual_memory()
+        if memory.percent > 90:
+            logger.warning(f"High system memory usage: {memory.percent}%")
+            
+        # Check GPU memory if available
+        try:
+            gpus = GPUtil.getGPUs()
+            for gpu in gpus:
+                if gpu.memoryUtil > 0.9:  # 90% threshold
+                    logger.warning(f"High GPU memory usage: {gpu.memoryUtil*100}%")
+                    clear_gpu_memory()
+        except Exception:
+            pass
+            
+    except Exception as e:
+        logger.error(f"Error monitoring memory: {e}")
 
 def main():
     try:
