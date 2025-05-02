@@ -1145,6 +1145,13 @@ Analyze the teaching style and provide:
 4. Profile matching for different learner types (choose ONLY ONE best match)
 5. Overall teaching rigor assessment
 6. Question handling assessment (confidence, accuracy, and improvement areas)
+7. Hiring recommendation score (0-10) with detailed justification:
+   - Consider teaching effectiveness
+   - Communication skills
+   - Technical expertise
+   - Student engagement
+   - Professional demeanor
+   - Provide 3-4 key reasons for the score
 
 Required JSON structure:
 {{
@@ -1170,6 +1177,12 @@ Required JSON structure:
         "improvements": ["List of specific improvements for question handling"]
     }},
     "rigor": "Assessment of teaching rigor",
+    "hiringRecommendation": {{
+        "score": number between 0 and 10,
+        "reasons": ["List of 3-4 key reasons for the score"],
+        "strengths": ["List of key strengths that support hiring"],
+        "concerns": ["List of key concerns or areas needing improvement"]
+    }},
     "profileMatches": [
         {{
             "profile": "junior_technical",
@@ -1646,7 +1659,7 @@ class MentorEvaluator:
                     "score": 1 if 120 <= words_per_minute <= 160 else 0,
                     "wpm": words_per_minute,
                     "total_words": words,
-                    "durat  ion_minutes": duration_minutes
+                    "duration_minutes": duration_minutes
                 },
                 "fluency": {
                     "score": fluency_score,
@@ -2608,6 +2621,114 @@ def display_evaluation(evaluation: Dict[str, Any]):
                 
                 .question-content {
                     margin-top: 15px;
+                }
+                </style>
+            """, unsafe_allow_html=True)
+
+            # Add Hiring Recommendation Section
+            if "hiringRecommendation" in recommendations:
+                st.markdown("""
+                    <div class="hiring-card">
+                        <h4>🎯 Hiring Recommendation</h4>
+                        <div class="hiring-content">
+                """, unsafe_allow_html=True)
+                
+                hiring_data = recommendations["hiringRecommendation"]
+                score = hiring_data.get("score", 0)
+                
+                # Create a color gradient based on the score
+                if score >= 8:
+                    score_color = "#28a745"  # Green for high scores
+                    recommendation = "Strongly Recommended"
+                elif score >= 6:
+                    score_color = "#ffc107"  # Yellow for medium scores
+                    recommendation = "Recommended with Reservations"
+                else:
+                    score_color = "#dc3545"  # Red for low scores
+                    recommendation = "Not Recommended"
+                
+                # Display the score with a circular progress indicator
+                st.markdown(f"""
+                    <div style="text-align: center; margin: 20px 0;">
+                        <div style="
+                            width: 150px;
+                            height: 150px;
+                            border-radius: 50%;
+                            border: 10px solid {score_color};
+                            margin: 0 auto;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 48px;
+                            font-weight: bold;
+                            color: {score_color};">
+                            {score}/10
+                        </div>
+                        <div style="
+                            margin-top: 10px;
+                            font-size: 1.2em;
+                            font-weight: bold;
+                            color: {score_color};">
+                            {recommendation}
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                # Display reasons in columns
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("### ✅ Key Strengths")
+                    strengths = hiring_data.get("strengths", [])
+                    for strength in strengths:
+                        st.markdown(f"- {strength}")
+                
+                with col2:
+                    st.markdown("### ⚠️ Areas of Concern")
+                    concerns = hiring_data.get("concerns", [])
+                    for concern in concerns:
+                        st.markdown(f"- {concern}")
+                
+                # Display detailed reasons
+                st.markdown("### 📝 Detailed Justification")
+                reasons = hiring_data.get("reasons", [])
+                for reason in reasons:
+                    st.markdown(f"""
+                        <div class="reason-card">
+                            • {reason}
+                        </div>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown("</div></div>", unsafe_allow_html=True)
+
+            # Add the new CSS styles for the hiring recommendation section
+            st.markdown("""
+                <style>
+                .hiring-card {
+                    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin: 15px 0;
+                    border-left: 4px solid #1f77b4;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                }
+                
+                .hiring-content {
+                    margin-top: 15px;
+                }
+                
+                .reason-card {
+                    background: white;
+                    padding: 15px;
+                    margin: 10px 0;
+                    border-radius: 8px;
+                    border-left: 3px solid #1f77b4;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                    transition: transform 0.2s ease;
+                }
+                
+                .reason-card:hover {
+                    transform: translateX(5px);
                 }
                 </style>
             """, unsafe_allow_html=True)
