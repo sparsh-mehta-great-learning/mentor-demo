@@ -3449,6 +3449,24 @@ def schedule_gpu_cleanup(delay_minutes=15):
     cleanup_thread.start()
     print(f"GPU cleanup scheduled for {delay_minutes} minutes from now")
 
+def check_dependencies() -> List[str]:
+    """Check if all required system dependencies are installed.
+    
+    Returns:
+        List[str]: List of missing dependencies
+    """
+    missing_deps = []
+    
+    # Check FFmpeg
+    try:
+        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        missing_deps.append('ffmpeg')
+    
+    # Add more dependency checks here if needed
+    
+    return missing_deps
+
 def main():
     try:
         # Initialize session state for tracking progress
