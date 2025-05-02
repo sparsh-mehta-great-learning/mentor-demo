@@ -3065,14 +3065,6 @@ def display_evaluation(evaluation: Dict[str, Any]):
         }
         </style>
     """, unsafe_allow_html=True)
-def check_dependencies() -> List[str]:
-    """Check if required dependencies are installed"""
-    missing = []
-    
-    if not shutil.which('ffmpeg'):
-        missing.append("FFmpeg")
-    
-    return missing
 
 def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
     """Generate a more visually appealing and comprehensive PDF report."""
