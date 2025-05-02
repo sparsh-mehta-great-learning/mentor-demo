@@ -3846,100 +3846,110 @@ def handle_multiple_videos_analysis(input_type):
         
         # Store results for comparison
         all_results = []
+        temp_dirs = []  # Track all temp directories
         
-        # Process each video
-        for i, (video, tab) in enumerate(zip(uploaded_files, video_tabs)):
-            with tab:
-                st.markdown(f"### Processing: {video.name}")
-                
-                # Find matching transcript if needed
-                transcript = None
-                if input_type == "Video + Manual Transcript":
-                    base_name = os.path.splitext(video.name)[0]
-                    transcript = uploaded_transcripts.get(base_name)
-                    if not transcript:
-                        st.warning(f"No matching transcript found for {video.name}")
-                        continue
+        try:
+            # Process each video
+            for i, (video, tab) in enumerate(zip(uploaded_files, video_tabs)):
+                with tab:
+                    st.markdown(f"### Processing: {video.name}")
+                    
+                    # Find matching transcript if needed
+                    transcript = None
+                    if input_type == "Video + Manual Transcript":
+                        base_name = os.path.splitext(video.name)[0]
+                        transcript = uploaded_transcripts.get(base_name)
+                        if not transcript:
+                            st.warning(f"No matching transcript found for {video.name}")
+                            continue
 
+                    try:
+                        with st.status(f"Processing {video.name}...") as status:
+                            # Create temp directory for processing
+                            temp_dir = tempfile.mkdtemp()
+                            temp_dirs.append(temp_dir)  # Add to list of temp dirs
+                            video_path = os.path.join(temp_dir, video.name)
+                            
+                            # Save and process video
+                            with open(video_path, 'wb') as f:
+                                f.write(video.getbuffer())
+                            
+                            evaluator = MentorEvaluator()
+                            results = evaluator.evaluate_video(video_path, transcript)
+                            all_results.append(results)
+                            
+                            # Display results for this video
+                            display_evaluation(results)
+                            
+                            # Add download buttons for this video's reports
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                if st.download_button(
+                                    f"📥 Download JSON Report - {video.name}",
+                                    json.dumps(results, indent=2),
+                                    f"evaluation_report_{video.name}.json",
+                                    "application/json"
+                                ):
+                                    st.success(f"JSON report for {video.name} downloaded successfully!")
+                            
+                            with col2:
+                                if st.download_button(
+                                    f"📄 Download PDF Report - {video.name}",
+                                    generate_pdf_report(results),
+                                    f"evaluation_report_{video.name}.pdf",
+                                    "application/pdf"
+                                ):
+                                    st.success(f"PDF report for {video.name} downloaded successfully!")
+                            
+                            status.update(label=f"Completed processing {video.name}", state="complete")
+
+                    except Exception as e:
+                        st.error(f"Error processing {video.name}: {str(e)}")
+
+            # Add comparison section after all videos are processed
+            if len(all_results) > 1:
+                st.markdown("### 📊 Videos Comparison")
+                st.markdown("Compare key metrics across all processed videos:")
+                
+                # Create comparison metrics
+                comparison_data = []
+                for video, results in zip(uploaded_files, all_results):
+                    metrics = {
+                        'Video': video.name,
+                        'Speaking Rate (WPM)': results.get('speech_metrics', {}).get('speed', {}).get('wpm', 0),
+                        'Fluency Score': results.get('speech_metrics', {}).get('fluency', {}).get('score', 0),
+                        'Teaching Score': results.get('teaching', {}).get('overall_score', 0),
+                        'Hiring Score': results.get('recommendations', {}).get('hiringRecommendation', {}).get('score', 0)
+                    }
+                    comparison_data.append(metrics)
+                
+                if comparison_data:
+                    comparison_df = pd.DataFrame(comparison_data)
+                    st.dataframe(comparison_df)
+                    
+                    # Add visualization
+                    st.markdown("### 📈 Metrics Visualization")
+                    metric_to_plot = st.selectbox(
+                        "Select metric to visualize:",
+                        ['Speaking Rate (WPM)', 'Fluency Score', 'Teaching Score', 'Hiring Score']
+                    )
+                    
+                    # Create bar chart
+                    fig = px.bar(comparison_df, x='Video', y=metric_to_plot,
+                                title=f'Comparison of {metric_to_plot} Across Videos')
+                    st.plotly_chart(fig)
+
+        finally:
+            # Clean up all temp directories after all processing is complete
+            for temp_dir in temp_dirs:
                 try:
-                    with st.status(f"Processing {video.name}...") as status:
-                        # Create temp directory for processing
-                        temp_dir = tempfile.mkdtemp()
-                        video_path = os.path.join(temp_dir, video.name)
-                        
-                        # Save and process video
-                        with open(video_path, 'wb') as f:
-                            f.write(video.getbuffer())
-                        
-                        evaluator = MentorEvaluator()
-                        results = evaluator.evaluate_video(video_path, transcript)
-                        all_results.append(results)
-                        
-                        # Display results for this video
-                        display_evaluation(results)
-                        
-                        # Add download buttons for this video's reports
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            if st.download_button(
-                                f"📥 Download JSON Report - {video.name}",
-                                json.dumps(results, indent=2),
-                                f"evaluation_report_{video.name}.json",
-                                "application/json"
-                            ):
-                                st.success(f"JSON report for {video.name} downloaded successfully!")
-                        
-                        with col2:
-                            if st.download_button(
-                                f"📄 Download PDF Report - {video.name}",
-                                generate_pdf_report(results),
-                                f"evaluation_report_{video.name}.pdf",
-                                "application/pdf"
-                            ):
-                                st.success(f"PDF report for {video.name} downloaded successfully!")
-                        
-                        status.update(label=f"Completed processing {video.name}", state="complete")
-
-                except Exception as e:
-                    st.error(f"Error processing {video.name}: {str(e)}")
-                
-                finally:
-                    # Clean up temp files
-                    if 'temp_dir' in locals():
+                    if os.path.exists(temp_dir):
                         shutil.rmtree(temp_dir)
-
-        # Add comparison section after all videos are processed
-        if len(all_results) > 1:
-            st.markdown("### 📊 Videos Comparison")
-            st.markdown("Compare key metrics across all processed videos:")
+                except Exception as e:
+                    logger.warning(f"Failed to remove temporary directory {temp_dir}: {e}")
             
-            # Create comparison metrics
-            comparison_data = []
-            for video, results in zip(uploaded_files, all_results):
-                metrics = {
-                    'Video': video.name,
-                    'Speaking Rate (WPM)': results.get('speech_metrics', {}).get('speed', {}).get('wpm', 0),
-                    'Fluency Score': results.get('speech_metrics', {}).get('fluency', {}).get('score', 0),
-                    'Teaching Score': results.get('teaching', {}).get('overall_score', 0),
-                    'Hiring Score': results.get('recommendations', {}).get('hiringRecommendation', {}).get('score', 0)
-                }
-                comparison_data.append(metrics)
-            
-            if comparison_data:
-                comparison_df = pd.DataFrame(comparison_data)
-                st.dataframe(comparison_df)
-                
-                # Add visualization
-                st.markdown("### 📈 Metrics Visualization")
-                metric_to_plot = st.selectbox(
-                    "Select metric to visualize:",
-                    ['Speaking Rate (WPM)', 'Fluency Score', 'Teaching Score', 'Hiring Score']
-                )
-                
-                # Create bar chart
-                fig = px.bar(comparison_df, x='Video', y=metric_to_plot,
-                            title=f'Comparison of {metric_to_plot} Across Videos')
-                st.plotly_chart(fig)
+            # Clear GPU resources only after all videos are processed
+            clear_gpu_resources()
 
 # Add CSS for multiple videos mode
 st.markdown("""
