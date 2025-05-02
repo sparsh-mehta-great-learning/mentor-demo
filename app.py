@@ -1,4 +1,7 @@
 import streamlit as st
+# Set page config must be the first Streamlit command
+st.set_page_config(page_title="🎓 Mentor Demo Review System", layout="wide")
+
 import torch
 import os
 import numpy as np
@@ -3448,9 +3451,6 @@ def schedule_gpu_cleanup(delay_minutes=15):
 
 def main():
     try:
-        # Set page config must be the first Streamlit command
-        st.set_page_config(page_title="🎓 Mentor Demo Review System", layout="wide")
-        
         # Initialize session state for tracking progress
         if 'processing_complete' not in st.session_state:
             st.session_state.processing_complete = False
