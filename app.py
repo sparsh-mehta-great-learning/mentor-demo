@@ -3726,42 +3726,42 @@ def main():
 
 def handle_single_video_analysis(input_type):
     """Handle single video analysis mode"""
-        # Video upload section
+    # Video upload section
+    st.markdown('<div class="upload-section">', unsafe_allow_html=True)
+    st.markdown('<p class="upload-header">📹 Upload Teaching Video</p>', unsafe_allow_html=True)
+    uploaded_file = st.file_uploader(
+        "Select video file",
+        type=['mp4', 'avi', 'mov'],
+        help="Upload your teaching video (MP4, AVI, or MOV format, max 1GB)"
+    )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Transcript upload section (conditional)
+    uploaded_transcript = None
+    if input_type == "Video + Manual Transcript":
         st.markdown('<div class="upload-section">', unsafe_allow_html=True)
-        st.markdown('<p class="upload-header">📹 Upload Teaching Video</p>', unsafe_allow_html=True)
-        uploaded_file = st.file_uploader(
-            "Select video file",
-            type=['mp4', 'avi', 'mov'],
-            help="Upload your teaching video (MP4, AVI, or MOV format, max 1GB)"
+        st.markdown('<p class="upload-header">📝 Upload Transcript</p>', unsafe_allow_html=True)
+        uploaded_transcript = st.file_uploader(
+            "Select transcript file",
+            type=['txt'],
+            help="Upload your transcript (TXT format)"
         )
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Transcript upload section (conditional)
-        uploaded_transcript = None
-        if input_type == "Video + Manual Transcript":
-            st.markdown('<div class="upload-section">', unsafe_allow_html=True)
-            st.markdown('<p class="upload-header">📝 Upload Transcript</p>', unsafe_allow_html=True)
-            uploaded_transcript = st.file_uploader(
-                "Select transcript file",
-                type=['txt'],
-                help="Upload your transcript (TXT format)"
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
-
-        # Process video when uploaded
-        if uploaded_file:
-            if input_type == "Video + Manual Transcript" and not uploaded_transcript:
-                st.warning("Please upload both video and transcript files to continue.")
-                return
-                
+    # Process video when uploaded
+    if uploaded_file:
+        if input_type == "Video + Manual Transcript" and not uploaded_transcript:
+            st.warning("Please upload both video and transcript files to continue.")
+            return
+            
         # Process the single video
         try:
-                # Create temp directory for processing
-                temp_dir = tempfile.mkdtemp()
-                video_path = os.path.join(temp_dir, uploaded_file.name)
-                
+            # Create temp directory for processing
+            temp_dir = tempfile.mkdtemp()
+            video_path = os.path.join(temp_dir, uploaded_file.name)
+            
             # Save and process video
-                        with open(video_path, 'wb') as f:
+            with open(video_path, 'wb') as f:
                 f.write(uploaded_file.getbuffer())
             
             evaluator = MentorEvaluator()
@@ -3852,7 +3852,6 @@ def handle_multiple_videos_analysis(input_type):
                         st.warning(f"No matching transcript found for {video.name}")
                         continue
 
-                # Process video with progress tracking
                 try:
                     with st.status(f"Processing {video.name}...") as status:
                         # Create temp directory for processing
@@ -3872,17 +3871,17 @@ def handle_multiple_videos_analysis(input_type):
                         
                         # Add download buttons for this video's reports
                         col1, col2 = st.columns(2)
-                with col1:
-                    if st.download_button(
+                        with col1:
+                            if st.download_button(
                                 f"📥 Download JSON Report - {video.name}",
                                 json.dumps(results, indent=2),
                                 f"evaluation_report_{video.name}.json",
                                 "application/json"
                             ):
                                 st.success(f"JSON report for {video.name} downloaded successfully!")
-                
-                with col2:
-                    if st.download_button(
+                        
+                        with col2:
+                            if st.download_button(
                                 f"📄 Download PDF Report - {video.name}",
                                 generate_pdf_report(results),
                                 f"evaluation_report_{video.name}.pdf",
@@ -3892,7 +3891,7 @@ def handle_multiple_videos_analysis(input_type):
                         
                         status.update(label=f"Completed processing {video.name}", state="complete")
 
-    except Exception as e:
+                except Exception as e:
                     st.error(f"Error processing {video.name}: {str(e)}")
                 
                 finally:
