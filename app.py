@@ -1948,261 +1948,90 @@ def display_evaluation(evaluation: Dict[str, Any]):
         with tabs[1]:
             st.header("Teaching Analysis")
             
-            teaching_data = evaluation.get("teaching", {})
-            content_analyzer = ContentAnalyzer(st.secrets["OPENAI_API_KEY"])
-            
-            # Create sections instead of expanders
+            # Replace expanders with sections
             st.subheader("📚 Concept Assessment")
             concept_data = teaching_data.get("Concept Assessment", {})
             
             for category, details in concept_data.items():
                 if category == "Question Handling":
-                    continue  # Handle Question Handling separately
+                    continue
                 
                 score = details.get("Score", 0)
                 citations = details.get("Citations", [])
                 
-                st.markdown(f"""
-                    <div class="teaching-card">
-                        <div class="teaching-header">
-                            <span class="category-name">{category}</span>
-                            <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
-                                {'✅ Pass' if score == 1 else '❌ Needs Work'}
-                            </span>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
+                # Use columns for layout
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.markdown(f"**{category}**")
+                with col2:
+                    st.markdown("✅ Pass" if score == 1 else "❌ Needs Work")
                 
                 if citations:
                     st.markdown("##### 📝 Supporting Evidence")
                     for citation in citations:
-                        timestamp_match = re.match(r'\[(\d+:\d+)\]', citation)
-                        timestamp = timestamp_match.group(1) if timestamp_match else "00:00"
-                        quote = re.sub(r'\[\d+:\d+\]\s*', '', citation).strip("'")
-                        
-                        st.markdown(f"""
-                            <div class="citation-box">
-                                <div class="citation-timestamp">🕒 {timestamp}</div>
-                                <div class="citation-text">{quote}</div>
-                            </div>
-                        """, unsafe_allow_html=True)
+                        st.markdown(f"- {citation}")
+
+        with tabs[2]:
+            st.header("Recommendations")
             
-            # Code Assessment Section
-            st.subheader("💻 Code Assessment")
-            code_data = teaching_data.get("Code Assessment", {})
+            # Use columns for layout
+            col1, col2 = st.columns(2)
             
-            for category, details in code_data.items():
-                score = details.get("Score", 0)
-                citations = details.get("Citations", [])
-                
-                st.markdown(f"""
-                    <div class="teaching-card">
-                        <div class="teaching-header">
-                            <span class="category-name">{category}</span>
-                            <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
-                                {'✅ Pass' if score == 1 else '❌ Needs Work'}
-                            </span>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-                
-                if citations:
-                    st.markdown("##### 📝 Code Examples & Explanations")
-                    for citation in citations:
-                        timestamp_match = re.match(r'\[(\d+:\d+)\]', citation)
-                        timestamp = timestamp_match.group(1) if timestamp_match else "00:00"
-                        quote = re.sub(r'\[\d+:\d+\]\s*', '', citation).strip("'")
-                        
-                        st.markdown(f"""
-                            <div class="code-citation-box">
-                                <div class="citation-timestamp">🕒 {timestamp}</div>
-                                <div class="code-citation-text">{quote}</div>
-                            </div>
-                        """, unsafe_allow_html=True)
+            with col1:
+                st.subheader("🌍 Geography Fit")
+                st.markdown(recommendations.get("geographyFit", "Not available"))
             
-            # Question Handling Section
-            st.subheader("❓ Question Handling Assessment")
-            question_data = concept_data.get("Question Handling", {})
-            if question_data:
-                main_score = question_data.get("Score", 0)
-                main_citations = question_data.get("Citations", [])
-                details = question_data.get("Details", {})
+            with col2:
+                st.subheader("📚 Teaching Rigor")
+                st.markdown(recommendations.get("rigor", "Not available"))
+            
+            # Profile Matches section
+            st.subheader("👥 Learner Profile Matches")
+            for profile in recommendations.get("profileMatches", []):
+                st.markdown(f"**{profile.get('profile', '').replace('_', ' ').title()}**")
+                st.markdown(f"{'✅ Best Match' if profile.get('match', False) else '❌ Not Recommended'}")
+                st.markdown(profile.get("reason", "No reason provided"))
+
+        with tabs[3]:
+            st.header("Transcript with Timestamps")
+            transcript = evaluation.get("transcript", "")
+            
+            # Simple list of sentences with timestamps
+            sentences = re.split(r'(?<=[.!?])\s+', transcript)
+            for i, sentence in enumerate(sentences):
+                words_before = len(' '.join(sentences[:i]).split())
+                timestamp = words_before / 150
+                minutes = int(timestamp)
+                seconds = int((timestamp - minutes) * 60)
                 
-                # Display main score and citations
-                st.markdown(f"""
-                    <div class="teaching-card">
-                        <div class="teaching-header">
-                            <span class="category-name">Overall Question Handling</span>
-                            <span class="score-badge {'score-pass' if main_score == 1 else 'score-fail'}">
-                                {'✅ Pass' if main_score == 1 else '❌ Needs Work'}
-                            </span>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-                
-                # Display citations
-                if main_citations:
-                    st.markdown("##### 📝 Examples")
-                    for citation in main_citations:
-                        timestamp_match = re.match(r'\[(\d+:\d+)\]', citation)
-                        timestamp = timestamp_match.group(1) if timestamp_match else "00:00"
-                        quote = re.sub(r'\[\d+:\d+\]\s*', '', citation).strip("'")
-                        
-                        st.markdown(f"""
-                            <div class="question-citation-box">
-                                <div class="citation-timestamp">🕒 {timestamp}</div>
-                                <div class="question-citation-text">{quote}</div>
-                            </div>
-                        """, unsafe_allow_html=True)
-                
-                # Display detailed assessments in columns
-                if details:
-                    cols = st.columns(2)
-                    for i, (aspect, aspect_details) in enumerate(details.items()):
-                        with cols[i % 2]:
-                            score = aspect_details.get("Score", 0)
-                            citations = aspect_details.get("Citations", [])
-                            
-                            st.markdown(f"""
-                                <div class="question-detail-card">
-                                    <div class="detail-header">
-                                        <span class="detail-name">{aspect}</span>
-                                        <span class="score-badge {'score-pass' if score == 1 else 'score-fail'}">
-                                            {'✅ Pass' if score == 1 else '❌ Needs Work'}
-                                        </span>
-                                    </div>
-                                    <div class="detail-citations">
-                                        {chr(10).join(f'<div class="detail-citation">{citation}</div>' for citation in citations)}
-                                    </div>
-                                </div>
-                            """, unsafe_allow_html=True)
+                st.markdown(f"**[{minutes:02d}:{seconds:02d}]** {sentence}")
+
+    except Exception as e:
+        logger.error(f"Error displaying evaluation: {e}")
+        st.error(f"Error displaying results: {str(e)}")
+        st.error("Please check the evaluation data structure and try again.")
 
         with tabs[2]:
             st.header("Recommendations")
             recommendations = evaluation.get("recommendations", {})
             
-            # Add accent analysis section
-            audio_features = evaluation.get("audio_features", {})
-            accent_info = audio_features.get("accent_classification", {})
-            
-            if accent_info and accent_info.get("accent") != "Unknown":
-                st.markdown("""
-                    <div class="accent-card">
-                        <h4>🗣️ Accent Analysis</h4>
-                        <div class="accent-content">
-                """, unsafe_allow_html=True)
-                
-                accent = accent_info.get("accent", "Unknown")
-                confidence = accent_info.get("confidence", 0.0) * 100
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Detected Accent", accent)
-                with col2:
-                    st.metric("Confidence", f"{confidence:.1f}%")
-                
-                st.markdown("</div></div>", unsafe_allow_html=True)
-            
-            # Display summary in a styled card
+            # Summary Section
             if "summary" in recommendations:
-                st.markdown("""
-                    <div class="summary-card">
-                        <h4>📊 Overall Summary</h4>
-                        <div class="summary-content">
-                """, unsafe_allow_html=True)
+                st.subheader("📊 Overall Summary")
                 st.markdown(recommendations["summary"])
-                st.markdown("</div></div>", unsafe_allow_html=True)
             
-            # Add Geography Fit and Rigor Assessment
-            st.markdown("""
-                <div class="assessment-card">
-                    <h4>🌍 Teaching Assessment</h4>
-                    <div class="assessment-content">
-            """, unsafe_allow_html=True)
+            # Geography Fit and Teaching Rigor
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("🌍 Geography Fit")
+                st.markdown(recommendations.get("geographyFit", "Not available"))
+            with col2:
+                st.subheader("📚 Teaching Rigor")
+                st.markdown(recommendations.get("rigor", "Not available"))
             
-            # Geography Fit
-            st.markdown("""
-                <div class="assessment-item">
-                    <h5>Geography Fit</h5>
-                    <div class="assessment-text">
-            """, unsafe_allow_html=True)
-            geography_fit = recommendations.get("geographyFit", "Not available")
-            st.markdown(f"<p>{geography_fit}</p>", unsafe_allow_html=True)
-            st.markdown("</div></div>", unsafe_allow_html=True)
-            
-            # Teaching Rigor
-            st.markdown("""
-                <div class="assessment-item">
-                    <h5>Teaching Rigor</h5>
-                    <div class="assessment-text">
-            """, unsafe_allow_html=True)
-            teaching_rigor = recommendations.get("rigor", "Not available")
-            st.markdown(f"<p>{teaching_rigor}</p>", unsafe_allow_html=True)
-            st.markdown("</div></div>", unsafe_allow_html=True)
-            
-            st.markdown("</div></div>", unsafe_allow_html=True)
-            
-            # Update CSS for assessment items
-            st.markdown("""
-                <style>
-                .assessment-card {
-                    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-                    padding: 20px;
-                    border-radius: 8px;
-                    margin: 15px 0;
-                    border-left: 4px solid #4a69bd;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                }
-                
-                .assessment-content {
-                    margin-top: 15px;
-                }
-                
-                .assessment-item {
-                    background: white;
-                    border-radius: 8px;
-                    padding: 15px;
-                    margin: 10px 0;
-                    border: 1px solid #e9ecef;
-                    transition: transform 0.2s ease;
-                }
-                
-                .assessment-item:hover {
-                    transform: translateX(5px);
-                }
-                
-                .assessment-item h5 {
-                    color: #4a69bd;
-                    margin-bottom: 10px;
-                    font-size: 1.1em;
-                    border-bottom: 2px solid #f0f0f0;
-                    padding-bottom: 5px;
-                }
-                
-                .assessment-text {
-                    color: #2c3e50;
-                    font-size: 1em;
-                    line-height: 1.6;
-                    padding: 10px;
-                    background: #f8f9fa;
-                    border-radius: 4px;
-                }
-                
-                .assessment-text p {
-                    margin: 0;
-                    padding: 0;
-                }
-                </style>
-            """, unsafe_allow_html=True)
-            
-            # Add Profile Matches
+            # Profile Matches
             if "profileMatches" in recommendations:
-                st.markdown("""
-                    <div class="profiles-card">
-                        <h4>👥 Learner Profile Matches</h4>
-                        <div class="profiles-content">
-                """, unsafe_allow_html=True)
-                
+                st.subheader("👥 Learner Profile Matches")
                 for profile in recommendations["profileMatches"]:
                     profile_name = profile.get("profile", "").replace("_", " ").title()
                     is_match = profile.get("match", False)
@@ -2219,94 +2048,21 @@ def display_evaluation(evaluation: Dict[str, Any]):
                             <div class="profile-reason">{reason}</div>
                         </div>
                     """, unsafe_allow_html=True)
-                
-                st.markdown("</div></div>", unsafe_allow_html=True)
             
-            # Add Question Handling Assessment
-            if "questionHandling" in recommendations:
-                st.markdown("""
-                    <div class="question-handling-card">
-                        <h4>❓ Question Handling Assessment</h4>
-                        <div class="question-content">
-                """, unsafe_allow_html=True)
-                
-                q_handling = recommendations["questionHandling"]
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Confidence", q_handling.get("confidence", "Unknown"))
-                with col2:
-                    st.metric("Answer Accuracy", q_handling.get("accuracy", "Unknown"))
-                
-                if "improvements" in q_handling:
-                    st.markdown("### Suggested Improvements")
-                    for improvement in q_handling["improvements"]:
-                        st.markdown(f"- {improvement}")
-                
-                st.markdown("</div></div>", unsafe_allow_html=True)
-            
-            # Add Nervousness Analysis Section
-            st.markdown("""
-                <div class="nervousness-card">
-                    <h4>😰 Nervousness Analysis</h4>
-                    <div class="nervousness-content">
-            """, unsafe_allow_html=True)
-            
-            # Get speech metrics
-            speech_metrics = evaluation.get("speech_metrics", {})
-            fluency_data = speech_metrics.get("fluency", {})
-            flow_data = speech_metrics.get("flow", {})
-            intonation_data = speech_metrics.get("intonation", {})
-            energy_data = speech_metrics.get("energy", {})
-            
-            # Calculate nervousness indicators
-            fillers_per_minute = float(fluency_data.get("fillersPerMin", 0))
-            errors_per_minute = float(fluency_data.get("errorsPerMin", 0))
-            pauses_per_minute = float(flow_data.get("pausesPerMin", 0))
-            monotone_score = float(intonation_data.get("monotoneScore", 0))
-            pitch_variation = float(intonation_data.get("pitchVariation", 0))
-            mean_amplitude = float(energy_data.get("meanAmplitude", 0))
-            
-            # Create nervousness indicators
-            nervousness_indicators = []
-            
-            if fillers_per_minute > 3:
-                nervousness_indicators.append(f"High frequency of filler words ({fillers_per_minute:.1f}/min)")
-            if errors_per_minute > 1:
-                nervousness_indicators.append(f"Elevated speech errors ({errors_per_minute:.1f}/min)")
-            if pauses_per_minute > 12:
-                nervousness_indicators.append(f"Unnatural pauses ({pauses_per_minute:.1f}/min)")
-            if monotone_score > 0.4:
-                nervousness_indicators.append(f"Monotone speech pattern (score: {monotone_score:.2f})")
-            if pitch_variation < 20 or pitch_variation > 40:
-                nervousness_indicators.append(f"Unusual pitch variation ({pitch_variation:.1f}%)")
-            if mean_amplitude < 60 or mean_amplitude > 75:
-                nervousness_indicators.append(f"Voice energy level outside optimal range ({mean_amplitude:.1f})")
-            
-            if nervousness_indicators:
-                st.warning("⚠️ Nervousness Indicators Detected:")
-                for indicator in nervousness_indicators:
-                    st.markdown(f"- {indicator}")
-            else:
-                st.success("✅ No significant nervousness indicators detected")
-            
-            st.markdown("</div></div>", unsafe_allow_html=True)
-            
-            # Add Areas for Improvement section
-            st.markdown("<h4>💡 Areas for Improvement</h4>", unsafe_allow_html=True)
+            # Areas for Improvement
+            st.subheader("💡 Areas for Improvement")
             improvements = recommendations.get("improvements", [])
             
             if isinstance(improvements, list):
-                # Use predefined categories
                 categories = {
                     "🗣️ Communication": [],
                     "📚 Teaching": [],
                     "💻 Technical": []
                 }
                 
-                # Each improvement should now come with a category from the content analysis
                 for improvement in improvements:
                     if isinstance(improvement, dict):
-                        category = improvement.get("category", "💻 Technical")  # Default to Technical if no category
+                        category = improvement.get("category", "💻 Technical")
                         message = improvement.get("message", str(improvement))
                         if "COMMUNICATION" in category.upper():
                             categories["🗣️ Communication"].append(message)
@@ -2315,225 +2071,28 @@ def display_evaluation(evaluation: Dict[str, Any]):
                         elif "TECHNICAL" in category.upper():
                             categories["💻 Technical"].append(message)
                     else:
-                        # Handle legacy format or plain strings
                         categories["💻 Technical"].append(improvement)
                 
-                # Display categorized improvements in columns
                 cols = st.columns(len(categories))
                 for col, (category, items) in zip(cols, categories.items()):
                     with col:
-                        st.markdown(f"""
-                            <div class="improvement-card">
-                                <h5>{category}</h5>
-                                <div class="improvement-list">
-                        """, unsafe_allow_html=True)
-                        
+                        st.markdown(f"##### {category}")
                         for item in items:
-                            st.markdown(f"""
-                                <div class="improvement-item">
-                                    • {item}
-                                </div>
-                            """, unsafe_allow_html=True)
-                        
-                        st.markdown("</div></div>", unsafe_allow_html=True)
-            
-            # Add additional CSS for new components
-            st.markdown("""
-                <style>
-                .assessment-card, .profiles-card, .question-handling-card {
-                    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-                    padding: 20px;
-                    border-radius: 8px;
-                    margin: 15px 0;
-                    border-left: 4px solid #4a69bd;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                }
-                
-                .profile-item {
-                    background: white;
-                    border-radius: 8px;
-                    padding: 15px;
-                    margin: 10px 0;
-                    border: 1px solid #e9ecef;
-                    transition: transform 0.2s ease;
-                }
-                
-                .profile-item:hover {
-                    transform: translateX(5px);
-                }
-                
-                .profile-match {
-                    border-left: 4px solid #28a745;
-                }
-                
-                .profile-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    margin-bottom: 10px;
-                }
-                
-                .profile-name {
-                    font-weight: bold;
-                    color: #2c3e50;
-                }
-                
-                .match-badge {
-                    padding: 4px 8px;
-                    border-radius: 15px;
-                    font-size: 0.9em;
-                }
-                
-                .match-yes {
-                    background-color: #d4edda;
-                    color: #155724;
-                }
-                
-                .match-no {
-                    background-color: #f8d7da;
-                    color: #721c24;
-                }
-                
-                .profile-reason {
-                    color: #666;
-                    font-size: 0.95em;
-                    margin-top: 8px;
-                    padding: 8px;
-                    background: #f8f9fa;
-                    border-radius: 4px;
-                }
-                
-                .question-content {
-                    margin-top: 15px;
-                }
-                </style>
-            """, unsafe_allow_html=True)
-
-            # Add Hiring Recommendation Section
-            if "hiringRecommendation" in recommendations:
-                st.markdown("""
-                    <div class="hiring-card">
-                        <h4>🎯 Hiring Recommendation</h4>
-                        <div class="hiring-content">
-                """, unsafe_allow_html=True)
-                
-                hiring_data = recommendations["hiringRecommendation"]
-                score = hiring_data.get("score", 0)
-                
-                # Create a color gradient based on the score
-                if score >= 8:
-                    score_color = "#28a745"  # Green for high scores
-                    recommendation = "Strongly Recommended"
-                elif score >= 6:
-                    score_color = "#ffc107"  # Yellow for medium scores
-                    recommendation = "Recommended with Reservations"
-                else:
-                    score_color = "#dc3545"  # Red for low scores
-                    recommendation = "Not Recommended"
-                
-                # Display the score with a circular progress indicator
-                st.markdown(f"""
-                    <div style="text-align: center; margin: 20px 0;">
-                        <div style="
-                            width: 150px;
-                            height: 150px;
-                            border-radius: 50%;
-                            border: 10px solid {score_color};
-                            margin: 0 auto;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            font-size: 48px;
-                            font-weight: bold;
-                            color: {score_color};">
-                            {score}/10
-                        </div>
-                        <div style="
-                            margin-top: 10px;
-                            font-size: 1.2em;
-                            font-weight: bold;
-                            color: {score_color};">
-                            {recommendation}
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-                
-                # Display reasons in columns
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.markdown("### ✅ Key Strengths")
-                    strengths = hiring_data.get("strengths", [])
-                    for strength in strengths:
-                        st.markdown(f"- {strength}")
-                
-                with col2:
-                    st.markdown("### ⚠️ Areas of Concern")
-                    concerns = hiring_data.get("concerns", [])
-                    for concern in concerns:
-                        st.markdown(f"- {concern}")
-                
-                # Display detailed reasons
-                st.markdown("### 📝 Detailed Justification")
-                reasons = hiring_data.get("reasons", [])
-                for reason in reasons:
-                    st.markdown(f"""
-                        <div class="reason-card">
-                            • {reason}
-                        </div>
-                    """, unsafe_allow_html=True)
-                
-                st.markdown("</div></div>", unsafe_allow_html=True)
-
-            # Add the new CSS styles for the hiring recommendation section
-            st.markdown("""
-                <style>
-                .hiring-card {
-                    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-                    padding: 20px;
-                    border-radius: 8px;
-                    margin: 15px 0;
-                    border-left: 4px solid #1f77b4;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                }
-                
-                .hiring-content {
-                    margin-top: 15px;
-                }
-                
-                .reason-card {
-                    background: white;
-                    padding: 15px;
-                    margin: 10px 0;
-                    border-radius: 8px;
-                    border-left: 3px solid #1f77b4;
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-                    transition: transform 0.2s ease;
-                }
-                
-                .reason-card:hover {
-                    transform: translateX(5px);
-                }
-                </style>
-            """, unsafe_allow_html=True)
+                            st.markdown(f"- {item}")
 
         with tabs[3]:
             st.header("Transcript with Timestamps")
             transcript = evaluation.get("transcript", "")
             
-            # Split transcript into sentences and add timestamps
+            # Simple list of sentences with timestamps
             sentences = re.split(r'(?<=[.!?])\s+', transcript)
             for i, sentence in enumerate(sentences):
-                # Calculate approximate timestamp based on words and average speaking rate
                 words_before = len(' '.join(sentences[:i]).split())
-                timestamp = words_before / 150  # Assuming 150 words per minute
+                timestamp = words_before / 150
                 minutes = int(timestamp)
                 seconds = int((timestamp - minutes) * 60)
                 
                 st.markdown(f"**[{minutes:02d}:{seconds:02d}]** {sentence}")
-
-            # Comment out original transcript display
-            # st.text(evaluation.get("transcript", "Transcript not available"))
 
     except Exception as e:
         logger.error(f"Error displaying evaluation: {e}")
@@ -3168,132 +2727,6 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         # Provide a more informative error message
         raise RuntimeError(f"Failed to generate PDF report: {str(e)}. Check logs for details.")
 
-def keep_device_active():
-    """Keep the device active by periodically writing to the log"""
-    try:
-        while not st.session_state.get('processing_complete', False):  # Check processing status
-            logger.info("Keeping device active...")
-            time.sleep(30)  # Wait 30 seconds between logs
-        logger.info("Processing complete, stopping device wake lock")
-    except Exception as e:
-        logger.warning(f"Device wake lock failed: {e}")
-
-def clear_gpu_resources():
-    """Clear GPU memory and turn off GPU after processing is complete."""
-    try:
-        # Clear PyTorch GPU cache if available
-        import torch
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            # Set device to CPU for subsequent operations
-            torch.device('cpu')
-            print("PyTorch GPU resources cleared")
-            
-        # Clear TensorFlow GPU memory if available
-        try:
-            import tensorflow as tf
-            gpus = tf.config.experimental.list_physical_devices('GPU')
-            if gpus:
-                for gpu in gpus:
-                    tf.config.experimental.set_memory_growth(gpu, True)
-                # Limit TensorFlow to CPU only after analysis
-                tf.config.set_visible_devices([], 'GPU')
-                print("TensorFlow GPU resources cleared")
-        except ImportError:
-            pass
-            
-        # Additional cleanup for other frameworks can be added here
-            
-    except Exception as e:
-        print(f"Error clearing GPU resources: {e}")
-
-def schedule_gpu_cleanup(delay_minutes=15):
-    """
-    Schedule GPU cleanup after specified delay in minutes.
-        
-        Args:
-        delay_minutes: Number of minutes to wait before clearing GPU resources
-    """
-    import threading
-    import time
-    
-    def delayed_cleanup():
-        print(f"GPU cleanup scheduled to run in {delay_minutes} minutes")
-        time.sleep(delay_minutes * 60)
-        print("Executing scheduled GPU cleanup")
-        clear_gpu_resources()
-    
-    # Start the cleanup in a background thread
-    cleanup_thread = threading.Thread(target=delayed_cleanup)
-    cleanup_thread.daemon = True  # Allow the thread to exit when the main program exits
-    cleanup_thread.start()
-    print(f"GPU cleanup scheduled for {delay_minutes} minutes from now")
-
-def check_dependencies() -> List[str]:
-    """Check if all required system dependencies are installed.
-            
-        Returns:
-        List[str]: List of missing dependencies
-    """
-    missing_deps = []
-    
-    # Check FFmpeg
-    try:
-        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        missing_deps.append('ffmpeg')
-    
-    # Add more dependency checks here if needed
-    
-    return missing_deps
-
-def clear_gpu_memory():
-    """Clear GPU memory more aggressively"""
-    try:
-        import torch
-        if torch.cuda.is_available():
-            # Clear PyTorch cache
-            torch.cuda.empty_cache()
-            
-            # Reset all PyTorch modules
-            for obj in gc.get_objects():
-                try:
-                    if torch.is_tensor(obj):
-                        del obj
-                except Exception:
-                    pass
-            
-            # Force garbage collection
-            gc.collect()
-            
-            logger.info("GPU memory cleared successfully")
-    except Exception as e:
-        logger.error(f"Error clearing GPU memory: {e}")
-
-def monitor_memory_usage():
-    """Monitor memory usage and log warnings"""
-    try:
-        import psutil
-        import GPUtil
-        
-        # Check system memory
-        memory = psutil.virtual_memory()
-        if memory.percent > 90:
-            logger.warning(f"High system memory usage: {memory.percent}%")
-            
-        # Check GPU memory if available
-        try:
-            gpus = GPUtil.getGPUs()
-            for gpu in gpus:
-                if gpu.memoryUtil > 0.9:  # 90% threshold
-                    logger.warning(f"High GPU memory usage: {gpu.memoryUtil*100}%")
-                    clear_gpu_memory()
-        except Exception:
-            pass
-            
-    except Exception as e:
-        logger.error(f"Error monitoring memory: {e}")
-
 def main():
     try:
         # Initialize session state for tracking progress
@@ -3647,26 +3080,6 @@ def handle_multiple_videos_analysis(input_type):
         help="Upload multiple teaching videos (MP4, AVI, or MOV format, max 1GB each)"
     )
 
-    # Handle transcript uploads if needed
-    uploaded_transcripts = {}
-    if input_type == "Video + Manual Transcript":
-        st.markdown('<div class="upload-section">', unsafe_allow_html=True)
-        st.markdown('<p class="upload-header">📝 Upload Transcripts</p>', unsafe_allow_html=True)
-        st.markdown("Upload one transcript file for each video (must match video filenames)", unsafe_allow_html=True)
-        
-        transcript_files = st.file_uploader(
-            "Select transcript files",
-            type=['txt'],
-            accept_multiple_files=True,
-            help="Upload transcript files (one per video)"
-        )
-        
-        if transcript_files:
-            for transcript in transcript_files:
-                # Store transcripts with video filename (without extension) as key
-                base_name = os.path.splitext(transcript.name)[0]
-                uploaded_transcripts[base_name] = transcript
-
     if uploaded_files:
         # Create tabs for each video
         video_tabs = st.tabs([f"Video {i+1}: {video.name}" for i, video in enumerate(uploaded_files)])
@@ -3684,15 +3097,6 @@ def handle_multiple_videos_analysis(input_type):
                 with tab:
                     st.markdown(f"### Processing: {video.name}")
                     
-                    # Find matching transcript if needed
-                    transcript = None
-                    if input_type == "Video + Manual Transcript":
-                        base_name = os.path.splitext(video.name)[0]
-                        transcript = uploaded_transcripts.get(base_name)
-                        if not transcript:
-                            st.warning(f"No matching transcript found for {video.name}")
-                            continue
-
                     try:
                         with st.status(f"Processing {video.name}...") as status:
                             # Create temp directory for processing
@@ -3705,7 +3109,7 @@ def handle_multiple_videos_analysis(input_type):
                                 f.write(video.getbuffer())
                             
                             # Process video
-                            results = evaluator.evaluate_video(video_path, transcript)
+                            results = evaluator.evaluate_video(video_path)
                             all_results.append(results)
                             
                             # Display results for this video
