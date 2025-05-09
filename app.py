@@ -2566,12 +2566,43 @@ def display_evaluation(evaluation: Dict[str, Any]):
                 # Geography Fit
                 with geo_col:
                     geography_fit = recommendations.get("geographyFit", "Not Available")
-                    st.markdown("""
+                    accent_info = audio_features.get("accent_classification", {})
+                    accent = accent_info.get("accent", "Unknown")
+                    accent_confidence = accent_info.get("confidence", 0)
+                    accent_probabilities = accent_info.get("probabilities", {})
+                    
+                    # Create accent information HTML
+                    accent_html = f"""
+                        <div style='margin-top: 15px; padding-top: 10px; border-top: 1px solid #eee;'>
+                            <h5 style='color: #1f77b4; font-size: 14px; margin-bottom: 8px;'>🗣️ Accent Analysis</h5>
+                            <p style='color: #333; margin-bottom: 5px;'>
+                                <strong>Detected:</strong> {accent} ({accent_confidence*100:.1f}% confidence)
+                            </p>
+                    """
+                    
+                    if accent_probabilities:
+                        accent_html += """
+                            <div style='margin-top: 8px;'>
+                                <p style='color: #666; font-size: 12px; margin-bottom: 5px;'>Accent Distribution:</p>
+                                <div style='display: flex; flex-wrap: wrap; gap: 5px;'>
+                        """
+                        for accent_type, prob in accent_probabilities.items():
+                            accent_html += f"""
+                                <span style='background-color: #f8f9fa; padding: 2px 6px; border-radius: 4px; font-size: 11px;'>
+                                    {accent_type}: {prob*100:.1f}%
+                                </span>
+                            """
+                        accent_html += "</div></div>"
+                    
+                    accent_html += "</div>"
+                    
+                    st.markdown(f"""
                         <div style='background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
                             <h4 style='color: #1f77b4; font-size: 16px;'>🌍 Geography Fit</h4>
-                            <p style='color: #333; margin-top: 10px;'>{fit}</p>
+                            <p style='color: #333; margin-top: 10px;'>{geography_fit}</p>
+                            {accent_html}
                         </div>
-                    """.format(fit=geography_fit), unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
 
                 # Teaching Rigor and Profile Match
                 with profile_col:
@@ -3225,12 +3256,30 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
 
         # Geography Fit and Teaching Style
         story.append(Paragraph("Market Fit & Teaching Style", heading1_style))
+        
+        # Create two-column layout for Geography and Teaching Style
         geography_fit = recommendations.get("geographyFit", "Not Available")
         rigor = recommendations.get("rigor", "Not Available")
         
+        # Add accent information to geography fit
+        accent_info = audio_features.get("accent_classification", {})
+        accent = accent_info.get("accent", "Unknown")
+        accent_confidence = accent_info.get("confidence", 0)
+        accent_probabilities = accent_info.get("probabilities", {})
+        
+        # Create accent information text
+        accent_text = f"Detected Accent: {accent} ({accent_confidence*100:.1f}% confidence)\n\n"
+        if accent_probabilities:
+            accent_text += "Accent Probability Distribution:\n"
+            for accent_type, prob in accent_probabilities.items():
+                accent_text += f"• {accent_type}: {prob*100:.1f}%\n"
+        
+        # Combine geography fit with accent information
+        geography_text = f"{geography_fit}\n\n{accent_text}"
+        
         geo_teach_data = [
-            [Paragraph("Geography Fit", heading2_style), Paragraph("Teaching Style", heading2_style)],
-            [Paragraph(geography_fit, body_style), Paragraph(rigor, body_style)]
+            [Paragraph("Geography Fit & Accent Analysis", heading2_style), Paragraph("Teaching Style", heading2_style)],
+            [Paragraph(geography_text, body_style), Paragraph(rigor, body_style)]
         ]
         
         t_geo_teach = Table(geo_teach_data, colWidths=[250, 250], spaceBefore=10, spaceAfter=10)
