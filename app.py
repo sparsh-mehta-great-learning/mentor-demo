@@ -56,6 +56,72 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# === Google Sheets Integration ===
+SHEET_ID = "1SXeGOOT8D4wEN0n0CTQWbW0Q7xOSOawBQvFXxKM8hIs"  # <-- Set your Google Sheet ID here
+SHEET_NAME = "Report"  # Tab name as provided
+
+def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_name=SHEET_NAME):
+    """Append evaluation metrics as a row to the Google Sheet."""
+    try:
+        # Authenticate (reuse Drive credentials env var)
+        credentials_json = os.getenv('GOOGLE_DRIVE_CREDENTIALS')
+        if not credentials_json:
+            logger.error("GOOGLE_DRIVE_CREDENTIALS environment variable not found")
+            return
+        credentials_info = json.loads(credentials_json)
+        creds = service_account.Credentials.from_service_account_info(
+            credentials_info,
+            scopes=[
+                'https://www.googleapis.com/auth/spreadsheets',
+                'https://www.googleapis.com/auth/drive',
+            ]
+        )
+        service = build('sheets', 'v4', credentials=creds)
+        sheet = service.spreadsheets()
+
+        # Extract metrics
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        speech_metrics = evaluation_data.get("speech_metrics", {})
+        teaching_data = evaluation_data.get("teaching", {})
+        audio_features = evaluation_data.get("audio_features", {})
+        recommendations = evaluation_data.get("recommendations", {})
+
+        wpm = speech_metrics.get("speed", {}).get("wpm", "")
+        comm_score = 1 if 120 <= wpm <= 160 else 0
+        concept_data = teaching_data.get("Concept Assessment", {})
+        teaching_score = sum(1 for d in concept_data.values() if d.get("Score", 0) == 1)
+        total_teaching = len(concept_data)
+        overall_score = 1 if comm_score == 1 and teaching_score == total_teaching else 0
+        qna_score = concept_data.get("Question Handling", {}).get("Score", "")
+        accent_info = audio_features.get("accent_classification", {})
+        accent = accent_info.get("accent", "")
+        accent_conf = accent_info.get("confidence", "")
+        rec_score = recommendations.get("hiringRecommendation", {}).get("score", "")
+
+        row = [
+            now,
+            filename,
+            wpm,
+            comm_score,
+            teaching_score,
+            overall_score,
+            qna_score,
+            accent,
+            accent_conf,
+            rec_score
+        ]
+        # Append row
+        sheet.values().append(
+            spreadsheetId=sheet_id,
+            range=f"{sheet_name}!A1",
+            valueInputOption="USER_ENTERED",
+            insertDataOption="INSERT_ROWS",
+            body={"values": [row]}
+        ).execute()
+        logger.info(f"Appended metrics for {filename} to Google Sheet.")
+    except Exception as e:
+        logger.error(f"Failed to append metrics to Google Sheet: {e}")
+
 def clear_gpu_memory():
     """Clear GPU memory and cache"""
     try:
@@ -3941,6 +4007,9 @@ def handle_google_drive_analysis(input_folder_link: str, output_folder_link: str
                     drive_handler.upload_file(pdf_path, output_folder_id, 'application/pdf')
                     logger.info(f"Successfully uploaded report for {video_name}")
                     
+                    # Append metrics to Google Sheet
+                    append_metrics_to_sheet(results, video_name)
+                    
                 finally:
                     # Clean up temporary directory
                     try:
@@ -3997,6 +4066,9 @@ def handle_single_video_analysis(input_type: str):
                     # Store results in session state
                     st.session_state.evaluation_results = results
                     st.session_state.processing_complete = True
+                    
+                    # Append metrics to Google Sheet
+                    append_metrics_to_sheet(results, video_file.name)
                     
                     # Display results
                     display_evaluation(results)
