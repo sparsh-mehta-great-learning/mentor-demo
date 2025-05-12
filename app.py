@@ -61,9 +61,8 @@ SHEET_ID = "1SXeGOOT8D4wEN0n0CTQWbW0Q7xOSOawBQvFXxKM8hIs"  # <-- Set your Google
 SHEET_NAME = "Report"  # Tab name as provided
 
 def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_name=SHEET_NAME):
-    """Append evaluation metrics as a row to the Google Sheet."""
+    """Append all PDF report metrics as a row to the Google Sheet. If the sheet is empty, add the header first."""
     try:
-        # Authenticate (reuse Drive credentials env var)
         credentials_json = os.getenv('GOOGLE_DRIVE_CREDENTIALS')
         if not credentials_json:
             logger.error("GOOGLE_DRIVE_CREDENTIALS environment variable not found")
@@ -79,37 +78,139 @@ def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_
         service = build('sheets', 'v4', credentials=creds)
         sheet = service.spreadsheets()
 
-        # Extract metrics
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         speech_metrics = evaluation_data.get("speech_metrics", {})
         teaching_data = evaluation_data.get("teaching", {})
         audio_features = evaluation_data.get("audio_features", {})
         recommendations = evaluation_data.get("recommendations", {})
 
-        wpm = speech_metrics.get("speed", {}).get("wpm", "")
-        comm_score = 1 if 120 <= wpm <= 160 else 0
+        # --- Recommendations & Summary ---
+        hiring_rec = recommendations.get("hiringRecommendation", {})
+        hiring_score = hiring_rec.get("score", "")
+        hiring_reasons = ", ".join(hiring_rec.get("reasons", []))
+        hiring_strengths = ", ".join(hiring_rec.get("strengths", []))
+        hiring_concerns = ", ".join(hiring_rec.get("concerns", []))
+        summary = recommendations.get("summary", "")
+        geography_fit = recommendations.get("geographyFit", "")
+        rigor = recommendations.get("rigor", "")
+        profile_matches = recommendations.get("profileMatches", [])
+        profile_matches_str = "; ".join([
+            f"{p.get('profile','')}: {'Yes' if p.get('match') else 'No'} ({p.get('reason','')})" for p in profile_matches
+        ])
+
+        # --- Key Teaching Metrics ---
         concept_data = teaching_data.get("Concept Assessment", {})
-        teaching_score = sum(1 for d in concept_data.values() if d.get("Score", 0) == 1)
-        total_teaching = len(concept_data)
-        overall_score = 1 if comm_score == 1 and teaching_score == total_teaching else 0
-        qna_score = concept_data.get("Question Handling", {}).get("Score", "")
+        content_accuracy = concept_data.get("Subject Matter Accuracy", {})
+        content_score = content_accuracy.get("Score", "")
+        examples = concept_data.get("Examples and Business Context", {})
+        examples_score = examples.get("Score", "")
+        speed_data = speech_metrics.get("speed", {})
+        words_per_minute = speed_data.get("wpm", "")
+        pace_score = 1 if 120 <= float(words_per_minute or 0) <= 160 else 0
+        qna_data = concept_data.get("Question Handling", {})
+        qna_details = qna_data.get("Details", {})
+        response_accuracy = qna_details.get("ResponseAccuracy", {}).get("Score", "")
+        response_completeness = qna_details.get("ResponseCompleteness", {}).get("Score", "")
         accent_info = audio_features.get("accent_classification", {})
         accent = accent_info.get("accent", "")
-        accent_conf = accent_info.get("confidence", "")
-        rec_score = recommendations.get("hiringRecommendation", {}).get("score", "")
+        accent_confidence = accent_info.get("confidence", "")
+        accent_score = 1 if float(accent_confidence or 0) > 0.7 else 0
 
+        # --- Confidence Assessment ---
+        fluency_data = speech_metrics.get("fluency", {})
+        fillers_per_min = fluency_data.get("fillersPerMin", "")
+        errors_per_min = fluency_data.get("errorsPerMin", "")
+        intonation_data = speech_metrics.get("intonation", {})
+        pitch_variation = intonation_data.get("pitchVariation", "")
+        pitch_mean = intonation_data.get("pitch", 0) or 1
+        pitch_var_percent = float(pitch_variation or 0) / float(pitch_mean or 1) * 100 if pitch_mean else 0
+        filler_confidence = "High" if float(fillers_per_min or 0) <= 2 else "Medium" if float(fillers_per_min or 0) <= 4 else "Low"
+        error_confidence = "High" if float(errors_per_min or 0) <= 0.5 else "Medium" if float(errors_per_min or 0) <= 1 else "Low"
+        pitch_confidence = "High" if 20 <= pitch_var_percent <= 40 else "Low"
+        confidence_score = sum([
+            1 if filler_confidence == "High" else 0.5 if filler_confidence == "Medium" else 0,
+            1 if error_confidence == "High" else 0.5 if error_confidence == "Medium" else 0,
+            1 if pitch_confidence == "High" else 0
+        ]) / 3 * 100
+        confidence_assessment = "Very Confident" if confidence_score >= 80 else "Moderately Confident" if confidence_score >= 60 else "Shows Nervousness"
+
+        # --- Communication Metrics ---
+        total_words = speed_data.get("total_words", "")
+        duration_minutes = speed_data.get("duration_minutes", "")
+        detected_fillers = ", ".join([f["word"]+":"+str(f["count"]) for f in fluency_data.get("detectedFillers", [])])
+        detected_errors = ", ".join([f'{e.get("type","")}({e.get("count","")}):{e.get("context","")}' for e in fluency_data.get("detectedErrors", [])])
+        flow_data = speech_metrics.get("flow", {})
+        pauses_per_min = flow_data.get("pausesPerMin", "")
+        intonation_display_data = audio_features.get("monotone_score", ""), audio_features.get("pitch_mean", ""), audio_features.get("pitch_variation_coeff", ""), audio_features.get("direction_changes_per_min", "")
+        energy_display_data = audio_features.get("mean_amplitude", ""), audio_features.get("amplitude_deviation", "")
+
+        # --- Teaching Analysis (flatten all categories) ---
+        concept_flat = {}
+        for cat, details in concept_data.items():
+            if isinstance(details, dict):
+                concept_flat[f"Concept_{cat}_Score"] = details.get("Score", "")
+                concept_flat[f"Concept_{cat}_Citations"] = ", ".join(details.get("Citations", []))
+                # If there are nested details (e.g., for QnA)
+                if "Details" in details and isinstance(details["Details"], dict):
+                    for subcat, subdetails in details["Details"].items():
+                        concept_flat[f"Concept_{cat}_{subcat}_Score"] = subdetails.get("Score", "")
+                        concept_flat[f"Concept_{cat}_{subcat}_Citations"] = ", ".join(subdetails.get("Citations", []))
+        code_flat = {}
+        code_data = teaching_data.get("Code Assessment", {})
+        for cat, details in code_data.items():
+            if isinstance(details, dict):
+                code_flat[f"Code_{cat}_Score"] = details.get("Score", "")
+                code_flat[f"Code_{cat}_Citations"] = ", ".join(details.get("Citations", []))
+
+        # --- Build row and header ---
         row = [
-            now,
-            filename,
-            wpm,
-            comm_score,
-            teaching_score,
-            overall_score,
-            qna_score,
-            accent,
-            accent_conf,
-            rec_score
+            now, filename,
+            hiring_score, hiring_reasons, hiring_strengths, hiring_concerns, summary, geography_fit, rigor, profile_matches_str,
+            content_score, examples_score, words_per_minute, pace_score, response_accuracy, response_completeness, accent, accent_confidence, accent_score,
+            fillers_per_min, errors_per_min, pitch_var_percent, filler_confidence, error_confidence, pitch_confidence, confidence_score, confidence_assessment,
+            total_words, duration_minutes, detected_fillers, detected_errors, pauses_per_min,
+            intonation_display_data[0], intonation_display_data[1], intonation_display_data[2], intonation_display_data[3],
+            energy_display_data[0], energy_display_data[1],
         ]
+        # Add all concept/code assessment fields
+        for k in sorted(concept_flat):
+            row.append(concept_flat[k])
+        for k in sorted(code_flat):
+            row.append(code_flat[k])
+
+        header = [
+            "Timestamp", "Filename",
+            "Hiring Score", "Hiring Reasons", "Hiring Strengths", "Hiring Concerns", "Summary", "Geography Fit", "Teaching Rigor", "Profile Matches",
+            "Content Accuracy Score", "Industry Examples Score", "Teaching Pace (WPM)", "Pace Score", "QnA Response Accuracy", "QnA Response Completeness", "Accent", "Accent Confidence", "Accent Score",
+            "Fillers/Min", "Errors/Min", "Pitch Variation %", "Filler Confidence", "Error Confidence", "Pitch Confidence", "Overall Confidence Score", "Confidence Assessment",
+            "Total Words", "Duration (min)", "Detected Fillers", "Detected Errors", "Pauses/Min",
+            "Monotone Score", "Pitch Mean (Hz)", "Pitch Variation Coeff (%)", "Direction Changes/Min",
+            "Mean Amplitude", "Amplitude Deviation",
+        ]
+        for k in sorted(concept_flat):
+            header.append(k)
+        for k in sorted(code_flat):
+            header.append(k)
+
+        # --- Check if sheet is empty (no data) ---
+        result = sheet.values().get(
+            spreadsheetId=sheet_id,
+            range=f"{sheet_name}!A1:A2"
+        ).execute()
+        values = result.get('values', [])
+        is_empty = not values or all(len(row) == 0 for row in values)
+
+        # If empty, write header first
+        if is_empty:
+            sheet.values().append(
+                spreadsheetId=sheet_id,
+                range=f"{sheet_name}!A1",
+                valueInputOption="USER_ENTERED",
+                insertDataOption="INSERT_ROWS",
+                body={"values": [header]}
+            ).execute()
+            logger.info(f"Header row written to Google Sheet {sheet_id} - {sheet_name}")
+
         # Append row
         sheet.values().append(
             spreadsheetId=sheet_id,
@@ -118,7 +219,7 @@ def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_
             insertDataOption="INSERT_ROWS",
             body={"values": [row]}
         ).execute()
-        logger.info(f"Appended metrics for {filename} to Google Sheet.")
+        logger.info(f"Appended all metrics for {filename} to Google Sheet.")
     except Exception as e:
         logger.error(f"Failed to append metrics to Google Sheet: {e}")
 
