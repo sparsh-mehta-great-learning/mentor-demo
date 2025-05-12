@@ -727,17 +727,7 @@ class ContentAnalyzer:
                     response = self.client.chat.completions.create(
                         model="gpt-4o-mini",  # Using GPT-4 for better analysis
                         messages=[
-                            {"role": "system", "content": """You are a strict teaching evaluator focusing on core teaching competencies.
-                             For each assessment point, you MUST include specific timestamps [MM:SS] from the transcript.
-                             Never use [00:00] as a placeholder - only use actual timestamps from the transcript.
-                             Each citation must include both the timestamp and a relevant quote showing evidence.
-                             
-                             Score of 1 requires meeting ALL criteria below with clear evidence.
-                             Score of 0 if ANY major teaching deficiency is present.
-                             
-                             Citations format: "[MM:SS] Exact quote from transcript showing evidence"
-                             
-                             Maintain high standards and require clear evidence of quality teaching."""},
+                            {"role": "system", "content": """You are a strict teaching evaluator focusing on core teaching competencies.\n For each assessment point, you MUST include specific timestamps [MM:SS] from the transcript.\n Never use [00:00] as a placeholder - only use actual timestamps from the transcript.\n Each citation must include both the timestamp and a relevant quote showing evidence.\n\n Score of 1 requires meeting ALL criteria below with clear evidence.\n Score of 0 if ANY major teaching deficiency is present.\n\n For 'Question Handling', ALL sub-criteria (ResponseAccuracy, ResponseCompleteness, ConfidenceLevel, ResponseTime, ClarificationSkills) must have a real timestamped citation and a score of 1 for the overall score to be 1. If any sub-criterion is 0 or missing a valid citation, set the overall score to 0 and explain why.\n\n Citations format: \"[MM:SS] Exact quote from transcript showing evidence\"\n\n Maintain high standards and require clear evidence of quality teaching."""},
                             {"role": "user", "content": prompt}
                         ],
                         temperature=0.3
@@ -778,6 +768,36 @@ class ContentAnalyzer:
                                     entry["Score"] = 1 if entry["Score"] == 1 else 0
                                     result[category][subcategory] = entry
                     
+                    # --- ENFORCE STRICTER QUESTION HANDLING ---
+                    qh = result.get("Concept Assessment", {}).get("Question Handling", {})
+                    details = qh.get("Details", {})
+                    sub_criteria = [
+                        "ResponseAccuracy",
+                        "ResponseCompleteness",
+                        "ConfidenceLevel",
+                        "ResponseTime",
+                        "ClarificationSkills"
+                    ]
+                    all_pass = True
+                    missing = []
+                    for sub in sub_criteria:
+                        sub_entry = details.get(sub, {})
+                        score = sub_entry.get("Score", 0)
+                        citations = sub_entry.get("Citations", [])
+                        # Check for valid citation (not [00:00], not empty, not placeholder)
+                        valid_citation = any(c and not c.startswith("[00:00]") and "insufficient" not in c.lower() for c in citations)
+                        if score != 1 or not valid_citation:
+                            all_pass = False
+                            missing.append(sub)
+                    if not all_pass:
+                        # Set overall Question Handling score to 0 and add reason
+                        if "Concept Assessment" in result and "Question Handling" in result["Concept Assessment"]:
+                            result["Concept Assessment"]["Question Handling"]["Score"] = 0
+                            fail_msg = f"[00:00] One or more sub-criteria failed or lacked valid citation (must have score=1 and real timestamped citation): {', '.join(missing)}"
+                            if "Citations" in result["Concept Assessment"]["Question Handling"]:
+                                result["Concept Assessment"]["Question Handling"]["Citations"].append(fail_msg)
+                            else:
+                                result["Concept Assessment"]["Question Handling"]["Citations"] = [fail_msg]
                     return result
                     
                 except json.JSONDecodeError as json_error:
@@ -848,249 +868,21 @@ class ContentAnalyzer:
             return default_structure
 
     def _create_analysis_prompt(self, transcript: str) -> str:
-        """Create the analysis prompt with stricter evaluation criteria"""
+        """Create the analysis prompt with stricter evaluation criteria for Question Handling"""
         # First try to extract existing timestamps
         timestamps = re.findall(r'\[(\d{2}:\d{2})\]', transcript)
         
         if timestamps:
-            timestamp_instruction = f"""Use the EXACT timestamps from the transcript (e.g. {', '.join(timestamps[:3])}).
-Do not create new timestamps."""
+            timestamp_instruction = f"""Use the EXACT timestamps from the transcript (e.g. {', '.join(timestamps[:3])}).\nDo not create new timestamps."""
         else:
             # Calculate approximate timestamps based on word position
-            timestamp_instruction = """Generate timestamps based on word position:
-1. Count words from start of transcript
-2. Calculate time: (word_count / 150) minutes
-3. Format as [MM:SS]"""
+            timestamp_instruction = """Generate timestamps based on word position:\n1. Count words from start of transcript\n2. Calculate time: (word_count / 150) minutes\n3. Format as [MM:SS]"""
 
-        prompt_template = """Analyze this teaching content with balanced standards. Each criterion should be evaluated fairly, avoiding both excessive strictness and leniency.
+        # --- STRICTER QUESTION HANDLING INSTRUCTIONS ---
+        stricter_qh = """
+IMPORTANT: For 'Question Handling', ALL sub-criteria (ResponseAccuracy, ResponseCompleteness, ConfidenceLevel, ResponseTime, ClarificationSkills) MUST have:\n- Score of 1\n- At least one real, timestamped citation (not [00:00] or any placeholder)\nIf ANY sub-criterion fails (score != 1 or missing valid citation), the overall 'Question Handling' score MUST be 0.\nIf no valid evidence is found for a sub-criterion, set its score to 0 and explain why.\nNEVER use [00:00] or generic placeholders for citations.\n"""
 
-Score 1 if MOST key requirements are met with clear evidence. Score 0 if MULTIPLE significant requirements are not met.
-You MUST provide specific citations with timestamps [MM:SS] for each assessment point.
-
-Transcript:
-{transcript}
-
-Timestamp Instructions:
-{timestamp_instruction}
-
-Required JSON response format:
-{{
-    "Concept Assessment": {{
-        "Subject Matter Accuracy": {{
-            "Score": 0 or 1,
-            "Citations": ["[MM:SS] Exact quote showing evidence"]
-        }},
-        "First Principles Approach": {{
-            "Score": 0 or 1,
-            "Citations": ["[MM:SS] Exact quote showing evidence"]
-        }},
-        "Examples and Business Context": {{
-            "Score": 0 or 1,
-            "Citations": ["[MM:SS] Exact quote showing evidence"]
-        }},
-        "Cohesive Storytelling": {{
-            "Score": 0 or 1,
-            "Citations": ["[MM:SS] Exact quote showing evidence"]
-        }},
-        "Engagement and Interaction": {{
-            "Score": 0 or 1,
-            "Citations": ["[MM:SS] Exact quote showing evidence of question handling"],
-            "QuestionConfidence": {{
-                "Score": 0 or 1,
-                "Citations": ["[MM:SS] Exact quote showing evidence of question handling"]
-            }}
-        }},
-        "Professional Tone": {{
-            "Score": 0 or 1,
-            "Citations": ["[MM:SS] Exact quote showing evidence"]
-        }},
-        "Question Handling": {{
-            "Score": 0 or 1,
-            "Citations": ["[MM:SS] Exact quote showing evidence of question handling"],
-            "Details": {{
-                "ResponseAccuracy": {{
-                    "Score": 0 or 1,
-                    "Citations": ["[MM:SS] Exact quote showing evidence of response accuracy"]
-                }},
-                "ResponseCompleteness": {{
-                    "Score": 0 or 1,
-                    "Citations": ["[MM:SS] Exact quote showing evidence of response completeness"]
-                }},
-                "ConfidenceLevel": {{
-                    "Score": 0 or 1,
-                    "Citations": ["[MM:SS] Exact quote showing evidence of confidence level"]
-                }}
-            }}
-        }}
-    }},
-    "Code Assessment": {{
-        "Depth of Explanation": {{
-            "Score": 0 or 1,
-            "Citations": ["[MM:SS] Exact quote showing evidence"]
-        }},
-        "Output Interpretation": {{
-            "Score": 0 or 1,
-            "Citations": ["[MM:SS] Exact quote showing evidence"]
-        }},
-        "Breaking down Complexity": {{
-            "Score": 0 or 1,
-            "Citations": ["[MM:SS] Exact quote showing evidence"]
-        }}
-    }}
-}}
-
-Balanced Scoring Criteria:
-
-Subject Matter Accuracy:
-✓ Score 1 if MOST:
-- Shows good technical knowledge
-- Uses appropriate terminology
-- Explains concepts correctly
-✗ Score 0 if MULTIPLE:
-- Contains significant technical errors
-- Uses consistently incorrect terminology
-- Misrepresents core concepts
-
-First Principles Approach:
-✓ Score 1 if MOST:
-- Introduces fundamental concepts
-- Shows logical progression
-- Connects related concepts
-✗ Score 0 if MULTIPLE:
-- Skips essential fundamentals
-- Shows unclear progression
-- Fails to connect concepts
-
-Examples and Business Context:
-✓ Score 1 if MOST:
-- Provides relevant examples
-- Shows business application
-- Demonstrates practical value
-✗ Score 0 if MULTIPLE:
-- Lacks meaningful examples
-- Missing practical context
-- Examples don't aid learning
-
-Cohesive Storytelling:
-✓ Score 1 if MOST:
-- Shows clear structure
-- Has logical transitions
-- Maintains consistent theme
-✗ Score 0 if MULTIPLE:
-- Has unclear structure
-- Shows jarring transitions
-- Lacks coherent theme
-
-Engagement and Interaction:
-✓ Score 1 if MOST:
-- Shows good audience interaction
-- Encourages participation
-- Answers questions confidently and accurately
-- Maintains engagement throughout
-✗ Score 0 if MULTIPLE:
-- Limited interaction
-- Ignores audience
-- Shows uncertainty in answers
-- Fails to maintain engagement
-
-Question Confidence Scoring:
-✓ Score 1 if MOST:
-- Provides clear, direct answers
-- Shows deep understanding
-- Handles follow-ups well
-- Maintains composure
-✗ Score 0 if MULTIPLE:
-- Shows uncertainty
-- Provides unclear answers
-- Struggles with follow-ups
-- Shows nervousness
-
-Professional Tone:
-✓ Score 1 if MOST:
-- Uses appropriate language
-- Shows confidence
-- Maintains clarity
-✗ Score 0 if MULTIPLE:
-- Uses inappropriate language
-- Shows consistent uncertainty
-- Is frequently unclear
-
-Depth of Explanation:
-✓ Score 1 if MOST:
-- Explains core concepts
-- Covers key details
-- Discusses implementation
-✗ Score 0 if MULTIPLE:
-- Misses core concepts
-- Skips important details
-- Lacks implementation depth
-
-Output Interpretation:
-✓ Score 1 if MOST:
-- Explains key results
-- Covers common errors
-- Discusses performance
-✗ Score 0 if MULTIPLE:
-- Unclear about results
-- Ignores error cases
-- Misses performance aspects
-
-Breaking down Complexity:
-✓ Score 1 if MOST:
-- Breaks down concepts
-- Shows clear steps
-- Builds understanding
-✗ Score 0 if MULTIPLE:
-- Keeps concepts too complex
-- Skips important steps
-- Creates confusion
-
-Important:
-- Each citation must include timestamp and relevant quote
-- Score 1 requires meeting MOST (not all) criteria
-- Score 0 requires MULTIPLE significant issues
-- Use specific evidence from transcript
-- Balance between being overly strict and too lenient
-
-Question Handling Assessment Criteria (ALL must be met for score of 1):
-
-1. Response Accuracy (Must meet ALL):
-   - Technical information must be 100% accurate
-   - All factual statements must be verifiable
-   - No misleading or ambiguous information
-   - Citations must show clear evidence of accurate responses
-
-2. Response Completeness (Must meet ALL):
-   - Must address ALL parts of each question
-   - Must provide necessary context
-   - Must include relevant examples where appropriate
-   - No partial or incomplete answers accepted
-
-3. Confidence Level (Must meet ALL):
-   - Clear, authoritative delivery
-   - No hesitation or uncertainty in responses
-   - Confident handling of follow-up questions
-   - Maintains professional tone throughout
-
-4. Response Time:
-   - Must respond within 3-5 seconds of question
-   - Longer response times must be justified by question complexity
-   - Must acknowledge question immediately even if full response needs time
-
-5. Clarification Skills (Must meet ALL):
-   - Asks probing questions when needed
-   - Confirms understanding before answering
-   - Reframes complex questions effectively
-   - Ensures question intent is fully understood
-
-Score 0 if ANY of the following are present:
-- Any technical inaccuracy
-- Incomplete or partial answers
-- Excessive hesitation or uncertainty
-- Failure to ask clarifying questions when needed
-- Missing examples or context
-- Delayed responses without justification
-"""
+        prompt_template = f"""Analyze this teaching content with balanced standards. Each criterion should be evaluated fairly, avoiding both excessive strictness and leniency.\n\nScore 1 if MOST key requirements are met with clear evidence. Score 0 if MULTIPLE significant requirements are not met.\nYou MUST provide specific citations with timestamps [MM:SS] for each assessment point.\n\nTranscript:\n{{transcript}}\n\nTimestamp Instructions:\n{{timestamp_instruction}}\n\n{stricter_qh}\n\nRequired JSON response format:\n{{\n    "Concept Assessment": {{\n        "Subject Matter Accuracy": {{\n            "Score": 0 or 1,\n            "Citations": ["[MM:SS] Exact quote showing evidence"]\n        }},\n        "First Principles Approach": {{\n            "Score": 0 or 1,\n            "Citations": ["[MM:SS] Exact quote showing evidence"]\n        }},\n        "Examples and Business Context": {{\n            "Score": 0 or 1,\n            "Citations": ["[MM:SS] Exact quote showing evidence"]\n        }},\n        "Cohesive Storytelling": {{\n            "Score": 0 or 1,\n            "Citations": ["[MM:SS] Exact quote showing evidence"]\n        }},\n        "Engagement and Interaction": {{\n            "Score": 0 or 1,\n            "Citations": ["[MM:SS] Exact quote showing evidence of question handling"],\n            "QuestionConfidence": {{\n                "Score": 0 or 1,\n                "Citations": ["[MM:SS] Exact quote showing evidence of question handling"]\n            }}\n        }},\n        "Professional Tone": {{\n            "Score": 0 or 1,\n            "Citations": ["[MM:SS] Exact quote showing evidence"]\n        }},\n        "Question Handling": {{\n            "Score": 0 or 1,\n            "Citations": ["[MM:SS] Exact quote showing evidence of question handling"],\n            "Details": {{\n                "ResponseAccuracy": {{\n                    "Score": 0 or 1,\n                    "Citations": ["[MM:SS] Exact quote showing evidence of response accuracy"]\n                }},\n                "ResponseCompleteness": {{\n                    "Score": 0 or 1,\n                    "Citations": ["[MM:SS] Exact quote showing evidence of response completeness"]\n                }},\n                "ConfidenceLevel": {{\n                    "Score": 0 or 1,\n                    "Citations": ["[MM:SS] Exact quote showing evidence of confidence level"]\n                }},\n                "ResponseTime": {{\n                    "Score": 0 or 1,\n                    "Citations": ["[MM:SS] Exact quote showing evidence of response time"]\n                }},\n                "ClarificationSkills": {{\n                    "Score": 0 or 1,\n                    "Citations": ["[MM:SS] Exact quote showing evidence of clarification skills"]\n                }}\n            }}\n        }}\n    }},\n    "Code Assessment": {{\n        "Depth of Explanation": {{\n            "Score": 0 or 1,\n            "Citations": ["[MM:SS] Exact quote showing evidence"]\n        }},\n        "Output Interpretation": {{\n            "Score": 0 or 1,\n            "Citations": ["[MM:SS] Exact quote showing evidence"]\n        }},\n        "Breaking down Complexity": {{\n            "Score": 0 or 1,\n            "Citations": ["[MM:SS] Exact quote showing evidence"]\n        }}\n    }}\n}}\n\nBalanced Scoring Criteria:\n... (rest of your prompt remains unchanged) ...\n"""
 
         return prompt_template.format(
             transcript=transcript,
