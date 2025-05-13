@@ -3933,6 +3933,26 @@ def extract_folder_id_from_link(link: str) -> str:
     except Exception as e:
         raise ValueError(f"Could not extract folder ID from link: {str(e)}")
 
+def extract_file_id_from_link(link: str) -> str:
+    """Extract file ID from Google Drive file link or ID string"""
+    try:
+        # Handle different Google Drive file link formats
+        if 'file/d/' in link:
+            # Format: https://drive.google.com/file/d/FILE_ID/view?usp=sharing
+            file_id = link.split('file/d/')[-1].split('/')[0]
+        elif 'id=' in link:
+            # Format: https://drive.google.com/open?id=FILE_ID
+            file_id = link.split('id=')[-1].split('&')[0]
+        else:
+            # Assume the link is just the ID
+            file_id = link.strip()
+        # Validate file ID format (typically 28-33 characters, but can vary)
+        if not re.match(r'^[a-zA-Z0-9_-]{20,}$', file_id):
+            raise ValueError("Invalid file ID format")
+        return file_id
+    except Exception as e:
+        raise ValueError(f"Could not extract file ID from link: {str(e)}")
+
 def handle_google_drive_analysis(input_folder_link: str, output_folder_link: str):
     """Handle analysis of videos from Google Drive folder using links"""
     try:
@@ -4252,6 +4272,93 @@ def handle_multiple_videos_analysis(input_type: str):
         logger.error(f"Error in multiple videos analysis: {e}")
         st.error(f"Error: {str(e)}")
 
+def handle_google_drive_single_file(file_link: str, output_folder_link: str):
+    """Handle analysis of a single video from Google Drive file link and output folder link"""
+    try:
+        # Extract file ID and output folder ID
+        try:
+            file_id = extract_file_id_from_link(file_link)
+            output_folder_id = extract_folder_id_from_link(output_folder_link)
+            logger.info(f"Successfully extracted file ID: {file_id}, Output folder ID: {output_folder_id}")
+        except ValueError as e:
+            st.error(str(e))
+            return
+
+        # Check for required environment variables
+        if not os.getenv('GOOGLE_DRIVE_CREDENTIALS'):
+            st.error("Google Drive credentials not found in environment variables!")
+            st.info("""
+            Please set up your Google Drive credentials in Hugging Face Spaces:
+            1. Go to your Space settings
+            2. Add a new secret with key 'GOOGLE_DRIVE_CREDENTIALS'
+            3. Paste your service account JSON credentials as the value
+            """)
+            return
+
+        # Initialize Google Drive handler
+        drive_handler = GoogleDriveHandler()
+
+        # Get file metadata
+        try:
+            file_metadata = drive_handler.service.files().get(
+                fileId=file_id,
+                fields='name,mimeType'
+            ).execute()
+            video_name = file_metadata.get('name', f'{file_id}.mp4')
+            mime_type = file_metadata.get('mimeType', 'video/mp4')
+        except Exception as e:
+            st.error(f"Could not access file: {str(e)}")
+            return
+
+        # Create temp directory for processing
+        temp_dir = tempfile.mkdtemp()
+        try:
+            # Download video
+            safe_video_name = re.sub(r'[<>:"/\\|?*]', '_', video_name)
+            video_path = os.path.join(temp_dir, safe_video_name)
+            downloaded_path = drive_handler.download_file(file_id, video_path)
+
+            # Verify the video file exists and has content
+            if not os.path.exists(downloaded_path):
+                raise FileNotFoundError(f"Video file not found at {downloaded_path}")
+            if os.path.getsize(downloaded_path) == 0:
+                raise ValueError(f"Downloaded video file is empty: {downloaded_path}")
+
+            # Initialize evaluator
+            evaluator = MentorEvaluator()
+            # Process video
+            results = evaluator.evaluate_video(downloaded_path)
+
+            # Generate PDF report
+            pdf_data = generate_pdf_report(results)
+
+            # Save PDF temporarily
+            pdf_name = f"{os.path.splitext(safe_video_name)[0]}_report.pdf"
+            pdf_path = os.path.join(temp_dir, pdf_name)
+            with open(pdf_path, 'wb') as f:
+                f.write(pdf_data)
+
+            # Upload PDF to output folder
+            drive_handler.upload_file(pdf_path, output_folder_id, 'application/pdf')
+            logger.info(f"Successfully uploaded report for {video_name}")
+
+            # Append metrics to Google Sheet
+            append_metrics_to_sheet(results, video_name)
+
+            st.success(f"Successfully processed and uploaded report for {video_name}")
+        except Exception as e:
+            logger.error(f"Error processing {video_name}: {e}")
+            st.error(f"Error processing {video_name}: {str(e)}")
+        finally:
+            # Clean up temporary directory
+            try:
+                shutil.rmtree(temp_dir)
+            except Exception as e:
+                logger.warning(f"Failed to clean up temporary directory {temp_dir}: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error in handle_google_drive_single_file: {e}")
+        st.error(f"Unexpected error: {str(e)}")
+
 def main():
     try:
         # Initialize session state
@@ -4309,23 +4416,45 @@ def main():
                 st.info("Please place your Google Drive API credentials file in the same directory as this script.")
                 return
             
-            # Input folder link
-            input_folder_link = st.text_input(
-                "Input Folder Link",
-                help="The Google Drive link to the folder containing videos to analyze"
+            # New: Choose between folder and single file
+            drive_mode = st.radio(
+                "Choose Google Drive processing mode:",
+                options=["Process Folder", "Process Single File"]
             )
             
-            # Output folder link
-            output_folder_link = st.text_input(
-                "Output Folder Link",
-                help="The Google Drive link to the folder where reports will be saved"
-            )
-            
-            if st.button("Start Processing"):
-                if not input_folder_link or not output_folder_link:
-                    st.warning("Please provide both input and output folder links.")
-                else:
-                    handle_google_drive_analysis(input_folder_link, output_folder_link)
+            if drive_mode == "Process Folder":
+                # Input folder link
+                input_folder_link = st.text_input(
+                    "Input Folder Link",
+                    help="The Google Drive link to the folder containing videos to analyze"
+                )
+                
+                # Output folder link
+                output_folder_link = st.text_input(
+                    "Output Folder Link",
+                    help="The Google Drive link to the folder where reports will be saved"
+                )
+                
+                if st.button("Start Processing (Folder)"):
+                    if not input_folder_link or not output_folder_link:
+                        st.warning("Please provide both input and output folder links.")
+                    else:
+                        handle_google_drive_analysis(input_folder_link, output_folder_link)
+            else:
+                # Single file mode
+                file_link = st.text_input(
+                    "Google Drive File Link",
+                    help="Paste the Google Drive link to the video file to analyze"
+                )
+                output_folder_link = st.text_input(
+                    "Output Folder Link",
+                    help="The Google Drive link to the folder where the report will be saved"
+                )
+                if st.button("Start Processing (Single File)"):
+                    if not file_link or not output_folder_link:
+                        st.warning("Please provide both the file link and output folder link.")
+                    else:
+                        handle_google_drive_single_file(file_link, output_folder_link)
         
         else:
             # Existing local upload code
