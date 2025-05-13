@@ -1364,40 +1364,23 @@ Content Analysis: {json.dumps(content_analysis)}
 
 Calculate the hiring recommendation score (0-10) based on these criteria:
 
-1. Communication Skills (0-3 points):
-   - Speed: {speech_metrics.get('speed', {}).get('wpm', 0)} WPM
-   - Fluency: {speech_metrics.get('fluency', {}).get('errors_per_min', 0)} errors/min, {speech_metrics.get('fluency', {}).get('fillers_per_min', 0)} fillers/min
-   - Intonation: Monotone score {speech_metrics.get('intonation', {}).get('monotone_score', 0)}, Pitch variation {speech_metrics.get('intonation', {}).get('pitch_variation_coeff', 0)}%
-   - Energy: Mean amplitude {speech_metrics.get('energy', {}).get('meanAmplitude', 0)}
+1. Communication Skills (0-5 points):
+   - Speed, fluency, intonation (monotone), energy, clarity, engagement
+   - If the speaker is monotonous, hard to understand, uses excessive fillers, or is disengaging, the communication score should be 0-2.
+   - If communication is excellent (clear, engaging, varied intonation, minimal fillers), score 5.
 
-2. Teaching Effectiveness (0-4 points):
-   - Concept Assessment: {json.dumps(teaching_data.get('Concept Assessment', {}))}
-   - Code Assessment: {json.dumps(teaching_data.get('Code Assessment', {}))}
+2. Teaching Effectiveness (0-3 points):
+   - Concept and code assessment
+   - Score 3 for clear, accurate, and insightful teaching; 0 for major errors or lack of clarity.
 
-3. Question Handling (0-3 points):
-   - Response Accuracy: {teaching_data.get('Concept Assessment', {}).get('Question Handling', {}).get('Details', {}).get('ResponseAccuracy', {}).get('Score', 'Not Available')}
-   - Response Completeness: {teaching_data.get('Concept Assessment', {}).get('Question Handling', {}).get('Details', {}).get('ResponseCompleteness', {}).get('Score', 'Not Available')}
-   - Confidence Level: {teaching_data.get('Concept Assessment', {}).get('Question Handling', {}).get('Details', {}).get('ConfidenceLevel', {}).get('Score', 'Not Available')}
+3. Question Handling (0-2 points):
+   - Response accuracy, completeness, confidence
+   - If the speaker cannot answer questions, avoids them, or shows nervousness, score 0.
+   - If answers are clear, complete, and confident, score 2.
 
-Scoring Guidelines:
-- Communication (0-3):
-  * Speed: Ideal 120-160 WPM, Acceptable 100-180 WPM
-  * Fluency: <0.5 errors/min and <2 fillers/min for full points
-  * Intonation: <0.2 monotone score and >20% pitch variation for full points
-  * Energy: Balanced amplitude (5-15) for full points
+**If the speaker is poor in communication or question handling, the overall score should be low, even if teaching is strong.**
 
-- Teaching (0-4):
-  * Concept Assessment: Weighted 3 points
-  * Code Assessment: Weighted 1 point
-  * Each "Pass" counts as 1.0, "Fail" as 0.0
-
-- Question Handling (0-3):
-  * Each aspect (accuracy, completeness, confidence) worth 1 point
-  * "Pass" counts as 1.0, "Fail" as 0.0
-
-- Bonus Points (0-1.5):
-  * 0.5 points for exceptional performance in each area
-  * Only award if score in that area is ≥90% of maximum
+Score should use the full 0-10 range. Only give 10/10 for truly exceptional, flawless performance. Provide a lower score for any significant issues in communication or question handling.
 
 Analyze the teaching style and provide:
 1. A simple and clear summary (3-5 short paragraphs)
