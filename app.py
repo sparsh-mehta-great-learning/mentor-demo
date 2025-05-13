@@ -1357,17 +1357,35 @@ class RecommendationGenerator:
         speech_metrics = metrics.get("speech_metrics", {})
         teaching_data = content_analysis.get("teaching", {})
 
+        # Extract key communication metrics for explicit highlighting
+        comm_metrics = speech_metrics.get('intonation', {})
+        monotone_score = comm_metrics.get('monotone_score', speech_metrics.get('monotone_score', 0))
+        pitch_variation = comm_metrics.get('pitchVariation', comm_metrics.get('pitch_variation_coeff', 0))
+        direction_changes = comm_metrics.get('direction_changes_per_min', 0)
+        fillers_per_min = speech_metrics.get('fluency', {}).get('fillersPerMin', 0)
+        errors_per_min = speech_metrics.get('fluency', {}).get('errorsPerMin', 0)
+
+        comm_metrics_summary = (
+            f"Communication Metrics:\n"
+            f"- Monotone score: {monotone_score:.2f} (high is bad)\n"
+            f"- Pitch variation: {pitch_variation:.1f}% (below 20% is bad)\n"
+            f"- Direction changes per minute: {direction_changes:.1f} (below 300 is bad)\n"
+            f"- Fillers per minute: {fillers_per_min:.1f}\n"
+            f"- Errors per minute: {errors_per_min:.1f}\n"
+        )
+
         return f"""Based on the following metrics and analysis, provide recommendations:
 
-Metrics: {json.dumps(metrics)}
-Content Analysis: {json.dumps(content_analysis)}
+{comm_metrics_summary}
 
 Calculate the hiring recommendation score (0-10) based on these criteria:
 
 1. Communication Skills (0-5 points):
-   - Speed, fluency, intonation (monotone), energy, clarity, engagement
-   - If the speaker is monotonous, hard to understand, uses excessive fillers, or is disengaging, the communication score should be 0-2.
-   - If communication is excellent (clear, engaging, varied intonation, minimal fillers), score 5.
+   - If the speaker is monotone (monotone score > 0.1, pitch variation < 20%, or direction changes per minute < 300), the communication score should be 0 or 1.
+   - If the speaker is engaging, clear, and uses varied intonation, score 5.
+   - If you give a score above 3, you must justify it with evidence from the metrics.
+   - Example: If monotone score is 0.15, pitch variation is 18%, and direction changes per minute is 301, score should be 1 or 2.
+   - If the speaker is hard to understand, disengaging, or uses excessive fillers, communication score should be 0 or 1.
 
 2. Teaching Effectiveness (0-3 points):
    - Concept and code assessment
