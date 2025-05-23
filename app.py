@@ -1411,6 +1411,11 @@ Analyze the teaching style and provide:
    - Calculate and provide a score from 0-10
    - Provide 3-4 key reasons for the score
    - List specific strengths and areas for improvement (Dont use complex terms just use simple language that is easy to understand)
+```
+
+    def generate_pdf_report(self, evaluation_data: Dict[str, Any], output_path: str):
+        """Generate a PDF report based on the evaluation data"""
+        # ... (rest of the code remains unchanged)
 
 Required JSON structure:
 {{
@@ -3639,40 +3644,77 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         story.append(Paragraph("Communication Metrics", heading1_style))
         speech_metrics = evaluation_data.get("speech_metrics", {})
 
-        # Calculate acceptance status based on key metrics
+        # Get key metrics
         speed_data = speech_metrics.get("speed", {})
         fluency_data = speech_metrics.get("fluency", {})
         intonation_data = speech_metrics.get("intonation", {})
+        flow_data = speech_metrics.get("flow", {})
 
-        # Get key metrics
         words_per_minute = float(speed_data.get("wpm", 0))
         fillers_per_min = float(fluency_data.get("fillersPerMin", 0))
         errors_per_min = float(fluency_data.get("errorsPerMin", 0))
         pitch_variation = float(intonation_data.get("pitchVariation", 0))
+        pauses_per_min = float(flow_data.get("pausesPerMin", 0))
 
-        # Determine acceptance status
-        is_accepted = (
-            120 <= words_per_minute <= 160 and  # Good speaking pace
-            fillers_per_min <= 3 and            # Limited filler words
-            errors_per_min <= 1 and             # Few speech errors
-            pitch_variation >= 20               # Good pitch variation
-        )
+        # Create a table for individual metric acceptance status
+        metrics_status_data = [
+            ['Metric', 'Value', 'Status', 'Target Range'],
+            ['Speaking Pace', f'{words_per_minute:.1f} WPM', 
+             '✓' if 120 <= words_per_minute <= 160 else '✗',
+             '120-160 WPM'],
+            ['Filler Words', f'{fillers_per_min:.1f}/min',
+             '✓' if fillers_per_min <= 3 else '✗',
+             '≤ 3/min'],
+            ['Speech Errors', f'{errors_per_min:.1f}/min',
+             '✓' if errors_per_min <= 1 else '✗',
+             '≤ 1/min'],
+            ['Pitch Variation', f'{pitch_variation:.1f}%',
+             '✓' if pitch_variation >= 20 else '✗',
+             '≥ 20%'],
+            ['Pauses', f'{pauses_per_min:.1f}/min',
+             '✓' if 2 <= pauses_per_min <= 6 else '✗',
+             '2-6/min']
+        ]
 
-        acceptance_status = "Accepted" if is_accepted else "Not Accepted"
-        acceptance_color = colors.darkgreen if is_accepted else colors.red
+        # Create and style the metrics status table
+        t = Table(metrics_status_data, colWidths=[150, 100, 50, 100])
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
+            ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.whitesmoke, colors.white])
+        ]))
+        story.append(t)
+        story.append(Spacer(1, 15))
 
-        # Add acceptance status at the top of communication metrics
-        acceptance_style = ParagraphStyle(
-            'AcceptanceStatus',
+        # Calculate overall acceptance
+        is_accepted = all([
+            120 <= words_per_minute <= 160,
+            fillers_per_min <= 3,
+            errors_per_min <= 1,
+            pitch_variation >= 20,
+            2 <= pauses_per_min <= 6
+        ])
+
+        # Add overall status
+        overall_status_style = ParagraphStyle(
+            'OverallStatus',
             parent=heading2_style,
-            textColor=acceptance_color,
+            textColor=colors.darkgreen if is_accepted else colors.red,
             fontSize=14,
             alignment=TA_CENTER
         )
-        story.append(Paragraph(f"Status: {acceptance_status}", acceptance_style))
-        story.append(Spacer(1, 10))
+        story.append(Paragraph(f"Overall Status: {'Accepted' if is_accepted else 'Not Accepted'}", overall_status_style))
+        story.append(Spacer(1, 15))
 
-        # Continue with existing metrics...
+        # Continue with detailed metrics tables...
         story.extend(create_metric_table(
             "Speed", speed_data, ['wpm', 'total_words', 'duration_minutes']
         ))
