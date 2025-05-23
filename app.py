@@ -1411,11 +1411,6 @@ Analyze the teaching style and provide:
    - Calculate and provide a score from 0-10
    - Provide 3-4 key reasons for the score
    - List specific strengths and areas for improvement (Dont use complex terms just use simple language that is easy to understand)
-```
-
-    def generate_pdf_report(self, evaluation_data: Dict[str, Any], output_path: str):
-        """Generate a PDF report based on the evaluation data"""
-        # ... (rest of the code remains unchanged)
 
 Required JSON structure:
 {{
@@ -3126,8 +3121,8 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
     try:
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter,
-                              leftMargin=72, rightMargin=72,
-                              topMargin=72, bottomMargin=72)
+                                leftMargin=72, rightMargin=72,
+                                topMargin=72, bottomMargin=72)
         styles = getSampleStyleSheet()
 
         # Extract all necessary data first
@@ -3644,40 +3639,46 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         story.append(Paragraph("Communication Metrics", heading1_style))
         speech_metrics = evaluation_data.get("speech_metrics", {})
 
-        # Get key metrics
+        # Calculate acceptance status for each metric
         speed_data = speech_metrics.get("speed", {})
         fluency_data = speech_metrics.get("fluency", {})
         intonation_data = speech_metrics.get("intonation", {})
-        flow_data = speech_metrics.get("flow", {})
 
+        # Get key metrics
         words_per_minute = float(speed_data.get("wpm", 0))
         fillers_per_min = float(fluency_data.get("fillersPerMin", 0))
         errors_per_min = float(fluency_data.get("errorsPerMin", 0))
         pitch_variation = float(intonation_data.get("pitchVariation", 0))
-        pauses_per_min = float(flow_data.get("pausesPerMin", 0))
 
-        # Create a table for individual metric acceptance status
-        metrics_status_data = [
-            ['Metric', 'Value', 'Status', 'Target Range'],
-            ['Speaking Pace', f'{words_per_minute:.1f} WPM', 
-             '✓' if 120 <= words_per_minute <= 160 else '✗',
+        # Define acceptance criteria for each metric
+        speed_accepted = 120 <= words_per_minute <= 160
+        fillers_accepted = fillers_per_min <= 3
+        errors_accepted = errors_per_min <= 1
+        pitch_accepted = pitch_variation >= 20
+
+        # Create a table for metric acceptance status
+        acceptance_data = [
+            ['Metric', 'Status', 'Value', 'Target Range'],
+            ['Speaking Pace', 
+             '✓' if speed_accepted else '✗',
+             f'{words_per_minute:.1f} WPM',
              '120-160 WPM'],
-            ['Filler Words', f'{fillers_per_min:.1f}/min',
-             '✓' if fillers_per_min <= 3 else '✗',
-             '≤ 3/min'],
-            ['Speech Errors', f'{errors_per_min:.1f}/min',
-             '✓' if errors_per_min <= 1 else '✗',
-             '≤ 1/min'],
-            ['Pitch Variation', f'{pitch_variation:.1f}%',
-             '✓' if pitch_variation >= 20 else '✗',
-             '≥ 20%'],
-            ['Pauses', f'{pauses_per_min:.1f}/min',
-             '✓' if 2 <= pauses_per_min <= 6 else '✗',
-             '2-6/min']
+            ['Filler Words',
+             '✓' if fillers_accepted else '✗',
+             f'{fillers_per_min:.1f} per min',
+             '≤ 3 per min'],
+            ['Speech Errors',
+             '✓' if errors_accepted else '✗',
+             f'{errors_per_min:.1f} per min',
+             '≤ 1 per min'],
+            ['Pitch Variation',
+             '✓' if pitch_accepted else '✗',
+             f'{pitch_variation:.1f}%',
+             '≥ 20%']
         ]
 
-        # Create and style the metrics status table
-        t = Table(metrics_status_data, colWidths=[150, 100, 50, 100])
+        # Create and style the acceptance table
+        t = Table(acceptance_data, colWidths=[150, 50, 100, 150])
         t.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -3687,40 +3688,33 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
             ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
             ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.whitesmoke, colors.white])
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
         ]))
         story.append(t)
         story.append(Spacer(1, 15))
 
-        # Calculate overall acceptance
-        is_accepted = all([
-            120 <= words_per_minute <= 160,
-            fillers_per_min <= 3,
-            errors_per_min <= 1,
-            pitch_variation >= 20,
-            2 <= pauses_per_min <= 6
-        ])
+        # Overall acceptance status
+        overall_accepted = all([speed_accepted, fillers_accepted, errors_accepted, pitch_accepted])
+        acceptance_status = "Accepted" if overall_accepted else "Not Accepted"
+        acceptance_color = colors.darkgreen if overall_accepted else colors.red
 
-        # Add overall status
-        overall_status_style = ParagraphStyle(
-            'OverallStatus',
+        acceptance_style = ParagraphStyle(
+            'AcceptanceStatus',
             parent=heading2_style,
-            textColor=colors.darkgreen if is_accepted else colors.red,
+            textColor=acceptance_color,
             fontSize=14,
             alignment=TA_CENTER
         )
-        story.append(Paragraph(f"Overall Status: {'Accepted' if is_accepted else 'Not Accepted'}", overall_status_style))
+        story.append(Paragraph(f"Overall Status: {acceptance_status}", acceptance_style))
         story.append(Spacer(1, 15))
 
-        # Continue with detailed metrics tables...
+        # Continue with detailed metrics...
         story.extend(create_metric_table(
-            "Speed", speed_data, ['wpm', 'total_words', 'duration_minutes']
+            "Speed Details", speed_data, ['wpm', 'total_words', 'duration_minutes']
         ))
         
         story.extend(create_metric_table(
-             "Fluency", fluency_data, ['errorsPerMin', 'fillersPerMin']
+             "Fluency Details", fluency_data, ['errorsPerMin', 'fillersPerMin']
         ))
         
         # Add detected fillers/errors details
@@ -3788,10 +3782,11 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         return pdf_data
 
     except ImportError:
-        logger.error("Reportlab not installed. Cannot generate PDF.")
-        raise RuntimeError("PDF generation requires 'reportlab' library. Please install it (`pip install reportlab`).")
+         logger.error("Reportlab not installed. Cannot generate PDF.")
+         raise RuntimeError("PDF generation requires 'reportlab' library. Please install it (`pip install reportlab`).")
     except Exception as e:
-        logger.error(f"Error generating PDF report: {e}", exc_info=True)
+        logger.error(f"Error generating PDF report: {e}", exc_info=True) # Log traceback
+        # Provide a more informative error message
         raise RuntimeError(f"Failed to generate PDF report: {str(e)}. Check logs for details.")
 
 class GoogleDriveHandler:
@@ -4593,4 +4588,4 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
         logger.error(f"Application error: {e}", exc_info=True)
-        
+    
