@@ -1099,7 +1099,6 @@ Score 0 if ANY of the following are present:
 
     def _evaluate_speech_metrics(self, transcript: str, audio_features: Dict[str, float], 
                            progress_callback=None) -> Dict[str, Any]:
-        """Evaluate speech metrics with LLM-based filler and error detection"""
         try:
             if progress_callback:
                 progress_callback(0.2, "Calculating speech metrics...")
@@ -1162,6 +1161,9 @@ Score 0 if ANY of the following are present:
             # Calculate fluency score
             fluency_score = 1 if (errors_per_minute <= max_errors and fillers_per_minute <= max_fillers) else 0
             
+            # Get pitch variation coefficient from audio features
+            pitch_variation_coeff = audio_features.get("pitch_variation_coeff", 0)
+            
             return {
                 "speed": {
                     "score": 1 if 120 <= words_per_minute <= 160 else 0,
@@ -1195,8 +1197,8 @@ Score 0 if ANY of the following are present:
                 },
                 "intonation": {
                     "pitch": audio_features.get("pitch_mean", 0),
-                    "pitchScore": 1 if 20 <= (audio_features.get("pitch_std", 0) / audio_features.get("pitch_mean", 0) * 100 if audio_features.get("pitch_mean", 0) > 0 else 0) <= 40 else 0,
-                    "pitchVariation": audio_features.get("pitch_std", 0),
+                    "pitchScore": 1 if 20 <= pitch_variation_coeff <= 40 else 0,
+                    "pitchVariation": pitch_variation_coeff,  # Use pitch_variation_coeff here
                     "patternScore": 1 if audio_features.get("variations_per_minute", 0) >= 120 else 0,
                     "risingPatterns": audio_features.get("rising_patterns", 0),
                     "fallingPatterns": audio_features.get("falling_patterns", 0),
@@ -1842,7 +1844,6 @@ class MentorEvaluator:
 
     def _evaluate_speech_metrics(self, transcript: str, audio_features: Dict[str, float], 
                                progress_callback=None) -> Dict[str, Any]:
-        """Evaluate speech metrics with LLM-based filler and error detection"""
         try:
             if progress_callback:
                 progress_callback(0.2, "Calculating speech metrics...")
@@ -1905,6 +1906,9 @@ class MentorEvaluator:
             # Calculate fluency score
             fluency_score = 1 if (errors_per_minute <= max_errors and fillers_per_minute <= max_fillers) else 0
             
+            # Get pitch variation coefficient from audio features
+            pitch_variation_coeff = audio_features.get("pitch_variation_coeff", 0)
+            
             return {
                 "speed": {
                     "score": 1 if 120 <= words_per_minute <= 160 else 0,
@@ -1938,8 +1942,8 @@ class MentorEvaluator:
                 },
                 "intonation": {
                     "pitch": audio_features.get("pitch_mean", 0),
-                    "pitchScore": 1 if 20 <= (audio_features.get("pitch_std", 0) / audio_features.get("pitch_mean", 0) * 100 if audio_features.get("pitch_mean", 0) > 0 else 0) <= 40 else 0,
-                    "pitchVariation": audio_features.get("pitch_std", 0),
+                    "pitchScore": 1 if 20 <= pitch_variation_coeff <= 40 else 0,
+                    "pitchVariation": pitch_variation_coeff,  # Use pitch_variation_coeff here
                     "patternScore": 1 if audio_features.get("variations_per_minute", 0) >= 120 else 0,
                     "risingPatterns": audio_features.get("rising_patterns", 0),
                     "fallingPatterns": audio_features.get("falling_patterns", 0),
@@ -3748,7 +3752,7 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         intonation_display_data = {
             "Monotone Score": audio_features.get("monotone_score"),
             "Pitch Mean (Hz)": audio_features.get("pitch_mean"),
-            "Pitch Variation Coeff (%)": audio_features.get("pitch_variation_coeff"),
+            "Pitch Variation Coeff (%)": intonation_data.get("pitchVariation"),  # Use the consistent value
             "Direction Changes/Min": audio_features.get("direction_changes_per_min"),
         }
         story.extend(create_metric_table("Intonation", intonation_display_data, list(intonation_display_data.keys())))
