@@ -3639,14 +3639,44 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         story.append(Paragraph("Communication Metrics", heading1_style))
         speech_metrics = evaluation_data.get("speech_metrics", {})
 
-        # Speed
+        # Calculate acceptance status based on key metrics
         speed_data = speech_metrics.get("speed", {})
+        fluency_data = speech_metrics.get("fluency", {})
+        intonation_data = speech_metrics.get("intonation", {})
+
+        # Get key metrics
+        words_per_minute = float(speed_data.get("wpm", 0))
+        fillers_per_min = float(fluency_data.get("fillersPerMin", 0))
+        errors_per_min = float(fluency_data.get("errorsPerMin", 0))
+        pitch_variation = float(intonation_data.get("pitchVariation", 0))
+
+        # Determine acceptance status
+        is_accepted = (
+            120 <= words_per_minute <= 160 and  # Good speaking pace
+            fillers_per_min <= 3 and            # Limited filler words
+            errors_per_min <= 1 and             # Few speech errors
+            pitch_variation >= 20               # Good pitch variation
+        )
+
+        acceptance_status = "Accepted" if is_accepted else "Not Accepted"
+        acceptance_color = colors.darkgreen if is_accepted else colors.red
+
+        # Add acceptance status at the top of communication metrics
+        acceptance_style = ParagraphStyle(
+            'AcceptanceStatus',
+            parent=heading2_style,
+            textColor=acceptance_color,
+            fontSize=14,
+            alignment=TA_CENTER
+        )
+        story.append(Paragraph(f"Status: {acceptance_status}", acceptance_style))
+        story.append(Spacer(1, 10))
+
+        # Continue with existing metrics...
         story.extend(create_metric_table(
             "Speed", speed_data, ['wpm', 'total_words', 'duration_minutes']
         ))
-
-        # Fluency
-        fluency_data = speech_metrics.get("fluency", {})
+        
         story.extend(create_metric_table(
              "Fluency", fluency_data, ['errorsPerMin', 'fillersPerMin']
         ))
