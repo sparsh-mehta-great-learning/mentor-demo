@@ -3126,8 +3126,8 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
     try:
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter,
-                                leftMargin=72, rightMargin=72,
-                                topMargin=72, bottomMargin=72)
+                              leftMargin=72, rightMargin=72,
+                              topMargin=72, bottomMargin=72)
         styles = getSampleStyleSheet()
 
         # Extract all necessary data first
@@ -3788,11 +3788,10 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         return pdf_data
 
     except ImportError:
-         logger.error("Reportlab not installed. Cannot generate PDF.")
-         raise RuntimeError("PDF generation requires 'reportlab' library. Please install it (`pip install reportlab`).")
+        logger.error("Reportlab not installed. Cannot generate PDF.")
+        raise RuntimeError("PDF generation requires 'reportlab' library. Please install it (`pip install reportlab`).")
     except Exception as e:
-        logger.error(f"Error generating PDF report: {e}", exc_info=True) # Log traceback
-        # Provide a more informative error message
+        logger.error(f"Error generating PDF report: {e}", exc_info=True)
         raise RuntimeError(f"Failed to generate PDF report: {str(e)}. Check logs for details.")
 
 class GoogleDriveHandler:
