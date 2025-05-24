@@ -1384,11 +1384,11 @@ Calculate the hiring recommendation score (0-10) based on these criteria:
 
 1. Communication Skills (0-5 points):
    - Score 5 if ALL of these are true:
-     * Monotone score < 0.1
-     * Pitch variation >= 20%
-     * Direction changes per minute >= 300
-     * Fillers per minute <= 3
-     * Errors per minute <= 1
+     * Monotone score < 0.3 (current: {monotone_score:.2f})
+     * Pitch variation >= 20% (current: {pitch_variation:.1f}%)
+     * Direction changes per minute >= 300 (current: {direction_changes:.1f})
+     * Fillers per minute <= 3 (current: {fillers_per_min:.1f})
+     * Errors per minute <= 1 (current: {errors_per_min:.1f})
    - Score 3 if MOST of these are true (at least 3 out of 5)
    - Score 1 if FEW of these are true (1-2 out of 5)
    - Score 0 if NONE of these are true
@@ -1402,9 +1402,7 @@ Calculate the hiring recommendation score (0-10) based on these criteria:
    - If the speaker cannot answer questions, avoids them, or shows nervousness, score 0.
    - If answers are clear, complete, and confident, score 2.
 
-**If the speaker is poor in communication or question handling, the overall score should be low, even if teaching is strong.**
-
-Score should use the full 0-10 range. Only give 10/10 for truly exceptional, flawless performance. Provide a lower score for any significant issues in communication or question handling.
+**Important: The summary and recommendations MUST accurately reflect the actual metrics shown above. Do not make claims about poor communication if the metrics show good performance.**
 
 Analyze the teaching style and provide:
 1. A simple and clear summary (3-5 short paragraphs)
