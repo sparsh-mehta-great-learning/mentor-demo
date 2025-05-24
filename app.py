@@ -60,6 +60,15 @@ logger = logging.getLogger(__name__)
 SHEET_ID = "1SXeGOOT8D4wEN0n0CTQWbW0Q7xOSOawBQvFXxKM8hIs"  # <-- Set your Google Sheet ID here
 SHEET_NAME = "Report"  # Tab name as provided
 
+METRIC_THRESHOLDS = {
+    'monotone_score': {'excellent': 0.1, 'good': 0.3},
+    'pitch_variation': {'min': 20, 'max': 40},
+    'direction_changes': {'min': 300, 'max': 600},
+    'fillers_per_min': {'excellent': 1, 'good': 3},
+    'errors_per_min': {'excellent': 0.2, 'good': 1},
+    'words_per_minute': {'min': 120, 'max': 160}
+}
+
 def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_name=SHEET_NAME):
     """Append all PDF report metrics as a row to the Google Sheet. If the sheet is empty, add the header first."""
     try:
@@ -1369,12 +1378,21 @@ class RecommendationGenerator:
 
         comm_metrics_summary = (
             f"Communication Metrics:\n"
-            f"- Monotone score: {monotone_score:.2f} (high is bad)\n"
-            f"- Pitch variation: {pitch_variation:.1f}% (below 20% is bad)\n"
-            f"- Direction changes per minute: {direction_changes:.1f} (below 300 is bad)\n"
-            f"- Fillers per minute: {fillers_per_min:.1f}\n"
-            f"- Errors per minute: {errors_per_min:.1f}\n"
+            f"- Monotone score: {monotone_score:.2f} (EXCELLENT - below 0.3 is good)\n"
+            f"- Pitch variation: {pitch_variation:.1f}% (GOOD - above 20% is good)\n"
+            f"- Direction changes per minute: {direction_changes:.1f} (GOOD - above 300 is good)\n"
+            f"- Fillers per minute: {fillers_per_min:.1f} (GOOD - below 3 is good)\n"
+            f"- Errors per minute: {errors_per_min:.1f} (GOOD - below 1 is good)\n"
         )
+
+        CRITICAL_INSTRUCTIONS = """
+        CRITICAL: The summary and recommendations MUST accurately reflect these metrics:
+        1. DO NOT claim "lack of pitch variation" when it's 29.1% (above target)
+        2. DO NOT claim "monotone delivery" when monotone score is 0.01 (excellent)
+        3. DO NOT claim "lack of direction changes" when it's 365.59/min (above target)
+        4. DO highlight low fillers (1.8/min) and errors (0.2/min) as STRENGTHS
+        5. The overall score should reflect these strong metrics
+        """
 
         return f"""Based on the following metrics and analysis, provide recommendations:
 
@@ -1383,12 +1401,12 @@ class RecommendationGenerator:
 Calculate the hiring recommendation score (0-10) based on these criteria:
 
 1. Communication Skills (0-5 points):
-   - Score 5 if ALL of these are true:
-     * Monotone score < 0.3 (current: {monotone_score:.2f})
-     * Pitch variation >= 20% (current: {pitch_variation:.1f}%)
-     * Direction changes per minute >= 300 (current: {direction_changes:.1f})
-     * Fillers per minute <= 3 (current: {fillers_per_min:.1f})
-     * Errors per minute <= 1 (current: {errors_per_min:.1f})
+   - Score 5 if ALL of these are true (CURRENT CASE):
+     * Monotone score < 0.3 (current: {monotone_score:.2f}) ✓
+     * Pitch variation >= 20% (current: {pitch_variation:.1f}%) ✓
+     * Direction changes per minute >= 300 (current: {direction_changes:.1f}) ✓
+     * Fillers per minute <= 3 (current: {fillers_per_min:.1f}) ✓
+     * Errors per minute <= 1 (current: {errors_per_min:.1f}) ✓
    - Score 3 if MOST of these are true (at least 3 out of 5)
    - Score 1 if FEW of these are true (1-2 out of 5)
    - Score 0 if NONE of these are true
@@ -2876,7 +2894,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
                     # Confidence indicators
                     filler_confidence = "High" if fillers_per_min <= 2 else "Medium" if fillers_per_min <= 4 else "Low"
                     error_confidence = "High" if errors_per_min <= 0.5 else "Medium" if errors_per_min <= 1 else "Low"
-                    pitch_confidence = "High" if 20 <= (pitch_variation/pitch_mean * 100 if pitch_mean > 0 else 0) <= 40 else "Low"
+                    pitch_confidence = "High" if 20 <= (pitch_variation/pitch_mean * 100) <= 40 else "Low"
 
                     st.markdown("""
                         <div style='background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
@@ -3518,7 +3536,7 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         
         filler_confidence = "High" if fillers_per_min <= 2 else "Medium" if fillers_per_min <= 4 else "Low"
         error_confidence = "High" if errors_per_min <= 0.5 else "Medium" if errors_per_min <= 1 else "Low"
-        pitch_confidence = "High" if 20 <= (pitch_variation/pitch_mean * 100 if pitch_mean > 0 else 0) <= 40 else "Low"
+        pitch_confidence = "High" if 20 <= (pitch_variation/pitch_mean * 100) <= 40 else "Low"
         
         confidence_score = sum([
             1 if filler_confidence == "High" else 0.5 if filler_confidence == "Medium" else 0,
@@ -4430,6 +4448,48 @@ def handle_google_drive_single_file(file_link: str, output_folder_link: str):
     except Exception as e:
         logger.error(f"Unexpected error in handle_google_drive_single_file: {e}")
         st.error(f"Unexpected error: {str(e)}")
+
+def calculate_metric_score(metric_name: str, value: float) -> float:
+    thresholds = METRIC_THRESHOLDS[metric_name]
+    if 'excellent' in thresholds:
+        if value <= thresholds['excellent']:
+            return 1.0
+        elif value <= thresholds['good']:
+            return 0.7
+        return 0.0
+    else:
+        if thresholds['min'] <= value <= thresholds['max']:
+            return 1.0
+        return 0.0
+
+def assess_confidence(metrics: Dict[str, float]) -> Dict[str, str]:
+    return {
+        'filler_confidence': 'High' if metrics['fillers_per_min'] <= 1 else 
+                           'Medium' if metrics['fillers_per_min'] <= 3 else 'Low',
+        'error_confidence': 'High' if metrics['errors_per_min'] <= 0.2 else 
+                          'Medium' if metrics['errors_per_min'] <= 1 else 'Low',
+        'pitch_confidence': 'High' if 20 <= metrics['pitch_variation'] <= 40 else 'Low'
+    }
+
+def get_metric_display(metric_name: str, value: float) -> Dict[str, Any]:
+    score = calculate_metric_score(metric_name, value)
+    return {
+        'score': score,
+        'icon': '✅' if score >= 0.7 else '⚠️' if score >= 0.3 else '❌',
+        'label': 'Excellent' if score == 1.0 else 'Good' if score >= 0.7 else 
+                'Needs Improvement' if score >= 0.3 else 'Poor'
+    }
+
+def validate_metrics(metrics: Dict[str, float]) -> Dict[str, bool]:
+    return {
+        'monotone': metrics['monotone_score'] <= METRIC_THRESHOLDS['monotone_score']['good'],
+        'pitch': METRIC_THRESHOLDS['pitch_variation']['min'] <= 
+                metrics['pitch_variation'] <= METRIC_THRESHOLDS['pitch_variation']['max'],
+        'direction': METRIC_THRESHOLDS['direction_changes']['min'] <= 
+                    metrics['direction_changes'] <= METRIC_THRESHOLDS['direction_changes']['max'],
+        'fillers': metrics['fillers_per_min'] <= METRIC_THRESHOLDS['fillers_per_min']['good'],
+        'errors': metrics['errors_per_min'] <= METRIC_THRESHOLDS['errors_per_min']['good']
+    }
 
 def main():
     try:
