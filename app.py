@@ -1383,11 +1383,15 @@ class RecommendationGenerator:
 Calculate the hiring recommendation score (0-10) based on these criteria:
 
 1. Communication Skills (0-5 points):
-   - If the speaker is monotone (monotone score > 0.1, pitch variation < 20%, or direction changes per minute < 300), the communication score should be 0 or 1.
-   - If the speaker is engaging, clear, and uses varied intonation, score 5.
-   - If you give a score above 3, you must justify it with evidence from the metrics.
-   - Example: If monotone score is 0.15, pitch variation is 18%, and direction changes per minute is 301, score should be 1 or 2.
-   - If the speaker is hard to understand, disengaging, or uses excessive fillers, communication score should be 0 or 1.
+   - Score 5 if ALL of these are true:
+     * Monotone score < 0.1
+     * Pitch variation >= 20%
+     * Direction changes per minute >= 300
+     * Fillers per minute <= 3
+     * Errors per minute <= 1
+   - Score 3 if MOST of these are true (at least 3 out of 5)
+   - Score 1 if FEW of these are true (1-2 out of 5)
+   - Score 0 if NONE of these are true
 
 2. Teaching Effectiveness (0-3 points):
    - Concept and code assessment
