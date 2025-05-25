@@ -71,11 +71,11 @@ METRIC_THRESHOLDS = {
 
 # New metric thresholds with teaching quality weights
 TEACHING_METRIC_WEIGHTS = {
-    'content_accuracy': 0.25,      # Weight for content accuracy
-    'industry_examples': 0.15,     # Weight for industry examples
-    'qna_accuracy': 0.20,         # Weight for Q&A accuracy
-    'engagement': 0.15,           # Weight for engagement
-    'communication': 0.25         # Weight for communication metrics
+    'content_accuracy': 0.30,      # Increased from 0.25
+    'industry_examples': 0.15,     # Kept same
+    'qna_accuracy': 0.20,         # Kept same
+    'engagement': 0.10,           # Decreased from 0.15
+    'communication': 0.25         # Kept at 0.25 as requested
 }
 
 def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_name=SHEET_NAME):
@@ -4513,10 +4513,10 @@ def calculate_teaching_score(metrics: Dict[str, Any]) -> float:
     fluency_data = speech_metrics.get('fluency', {})
     intonation_data = speech_metrics.get('intonation', {})
     
-    # Calculate communication score
+    # Calculate communication score with balanced thresholds
     comm_score = (
-        (1 if fluency_data.get('fillersPerMin', 0) <= 3 else 0) * 0.2 +
-        (1 if fluency_data.get('errorsPerMin', 0) <= 1 else 0) * 0.2 +
+        (1 if fluency_data.get('fillersPerMin', 0) <= 2.5 else 0) * 0.2 +  # Balanced threshold
+        (1 if fluency_data.get('errorsPerMin', 0) <= 0.8 else 0) * 0.2 +   # Balanced threshold
         (1 if 120 <= speech_metrics.get('speed', {}).get('wpm', 0) <= 160 else 0) * 0.2 +
         (1 if 20 <= intonation_data.get('pitchVariation', 0) <= 40 else 0) * 0.2 +
         (1 if intonation_data.get('direction_changes_per_min', 0) >= 300 else 0) * 0.2
@@ -4530,6 +4530,12 @@ def calculate_teaching_score(metrics: Dict[str, Any]) -> float:
         engagement_score * TEACHING_METRIC_WEIGHTS['engagement'] +
         comm_score * TEACHING_METRIC_WEIGHTS['communication']
     )
+    
+    # Apply penalties for critical teaching issues
+    if content_score == 0:  # Content accuracy is critical
+        weighted_score *= 0.8  # 20% penalty
+    if qna_score == 0:  # Q&A accuracy is critical
+        weighted_score *= 0.9  # 10% penalty
     
     return weighted_score * 10  # Convert to 0-10 scale
 
