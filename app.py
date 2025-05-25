@@ -69,6 +69,15 @@ METRIC_THRESHOLDS = {
     'words_per_minute': {'min': 120, 'max': 160}
 }
 
+# New metric thresholds with teaching quality weights
+TEACHING_METRIC_WEIGHTS = {
+    'content_accuracy': 0.25,      # Weight for content accuracy
+    'industry_examples': 0.15,     # Weight for industry examples
+    'qna_accuracy': 0.20,         # Weight for Q&A accuracy
+    'engagement': 0.15,           # Weight for engagement
+    'communication': 0.25         # Weight for communication metrics
+}
+
 def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_name=SHEET_NAME):
     """Append all PDF report metrics as a row to the Google Sheet. If the sheet is empty, add the header first."""
     try:
@@ -4490,6 +4499,66 @@ def validate_metrics(metrics: Dict[str, float]) -> Dict[str, bool]:
         'fillers': metrics['fillers_per_min'] <= METRIC_THRESHOLDS['fillers_per_min']['good'],
         'errors': metrics['errors_per_min'] <= METRIC_THRESHOLDS['errors_per_min']['good']
     }
+
+def calculate_teaching_score(metrics: Dict[str, Any]) -> float:
+    """Calculate overall teaching score with balanced weights"""
+    # Teaching quality components
+    content_score = float(metrics.get('content_accuracy', {}).get('Score', 0))
+    examples_score = float(metrics.get('industry_examples', {}).get('Score', 0))
+    qna_score = float(metrics.get('qna_accuracy', {}).get('Score', 0))
+    engagement_score = float(metrics.get('engagement', {}).get('Score', 0))
+    
+    # Communication components (normalized)
+    speech_metrics = metrics.get('speech_metrics', {})
+    fluency_data = speech_metrics.get('fluency', {})
+    intonation_data = speech_metrics.get('intonation', {})
+    
+    # Calculate communication score
+    comm_score = (
+        (1 if fluency_data.get('fillersPerMin', 0) <= 3 else 0) * 0.2 +
+        (1 if fluency_data.get('errorsPerMin', 0) <= 1 else 0) * 0.2 +
+        (1 if 120 <= speech_metrics.get('speed', {}).get('wpm', 0) <= 160 else 0) * 0.2 +
+        (1 if 20 <= intonation_data.get('pitchVariation', 0) <= 40 else 0) * 0.2 +
+        (1 if intonation_data.get('direction_changes_per_min', 0) >= 300 else 0) * 0.2
+    )
+    
+    # Calculate weighted score
+    weighted_score = (
+        content_score * TEACHING_METRIC_WEIGHTS['content_accuracy'] +
+        examples_score * TEACHING_METRIC_WEIGHTS['industry_examples'] +
+        qna_score * TEACHING_METRIC_WEIGHTS['qna_accuracy'] +
+        engagement_score * TEACHING_METRIC_WEIGHTS['engagement'] +
+        comm_score * TEACHING_METRIC_WEIGHTS['communication']
+    )
+    
+    return weighted_score * 10  # Convert to 0-10 scale
+
+def get_teaching_assessment(score: float) -> Dict[str, Any]:
+    """Get teaching assessment based on score"""
+    if score >= 8:
+        return {
+            'rating': 'Excellent',
+            'color': '#2ecc71',
+            'icon': '✅'
+        }
+    elif score >= 6:
+        return {
+            'rating': 'Good',
+            'color': '#f1c40f',
+            'icon': '⚠️'
+        }
+    elif score >= 4:
+        return {
+            'rating': 'Needs Improvement',
+            'color': '#e67e22',
+            'icon': '⚠️'
+        }
+    else:
+        return {
+            'rating': 'Poor',
+            'color': '#e74c3c',
+            'icon': '❌'
+        }
 
 def main():
     try:
