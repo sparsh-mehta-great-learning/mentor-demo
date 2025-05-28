@@ -2409,7 +2409,7 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
                              ParagraphStyle('Date', parent=body_style, alignment=TA_CENTER)))
         story.append(Spacer(1, 30))
 
-        # Overall Score Section with improved formatting
+        # Overall Score Section
         score_color = colors.darkgreen if teaching_score >= 8 else colors.orange if teaching_score >= 6 else colors.red
         overall_score_style = ParagraphStyle(
             'OverallScore',
@@ -2441,96 +2441,198 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         story.append(score_table)
         story.append(Spacer(1, 30))
 
-        # Key Assessment Points Section
-        story.append(Paragraph("Key Assessment Points", heading1_style))
+        # Hiring Assessment Section
+        story.append(Paragraph("Hiring Assessment", heading1_style))
+        recommendations = evaluation_data.get('recommendations', {})
+        hiring_rec = recommendations.get('hiringRecommendation', {})
         
-        # Strengths Section
-        if quality_assessment['strengths']:
-            story.append(Paragraph("Key Strengths", heading2_style))
-            for strength in quality_assessment['strengths']:
-                story.append(Paragraph(f"• {strength}", bullet_style))
-            story.append(Spacer(1, 15))
-        else:
-            story.append(Paragraph("No significant strengths identified", body_style))
-            story.append(Spacer(1, 15))
+        hiring_data = [
+            ["Metric", "Value"],
+            ["Hiring Score", f"{hiring_rec.get('score', 'N/A')}/10"],
+            ["Hiring Reasons", ", ".join(hiring_rec.get('reasons', ['N/A']))],
+            ["Hiring Strengths", ", ".join(hiring_rec.get('strengths', ['N/A']))],
+            ["Hiring Concerns", ", ".join(hiring_rec.get('concerns', ['N/A']))],
+            ["Summary", recommendations.get('summary', 'N/A')],
+            ["Geography Fit", recommendations.get('geographyFit', 'N/A')],
+            ["Teaching Rigor", recommendations.get('rigor', 'N/A')],
+            ["Profile Matches", "; ".join([
+                f"{p.get('profile','')}: {'Yes' if p.get('match') else 'No'} ({p.get('reason','')})" 
+                for p in recommendations.get('profileMatches', [])
+            ])]
+        ]
         
-        # Concerns Section
-        if quality_assessment['concerns']:
-            story.append(Paragraph("Areas for Growth", heading2_style))
-            for concern in quality_assessment['concerns']:
-                story.append(Paragraph(f"• {concern}", bullet_style))
-            story.append(Spacer(1, 15))
-        else:
-            story.append(Paragraph("No major concerns identified", body_style))
-            story.append(Spacer(1, 15))
-        
-        # Reasons Section
-        if quality_assessment['reasons']:
-            story.append(Paragraph("Key Reasons", heading2_style))
-            for reason in quality_assessment['reasons']:
-                story.append(Paragraph(f"• {reason}", bullet_style))
-            story.append(Spacer(1, 15))
-        else:
-            story.append(Paragraph("No specific reasons provided", body_style))
-            story.append(Spacer(1, 15))
+        hiring_table = Table(hiring_data, colWidths=[200, 300])
+        hiring_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(hiring_table)
+        story.append(Spacer(1, 20))
 
-        # Add detailed metrics section
-        story.append(Paragraph("Detailed Metrics", heading1_style))
-        
-        # Communication Metrics
-        speech_metrics = evaluation_data.get('speech_metrics', {})
-        if speech_metrics:
-            story.append(Paragraph("Communication Metrics", heading2_style))
-            metrics_data = [
-                ["Metric", "Value", "Status"],
-                ["Speaking Pace", f"{speech_metrics.get('speed', {}).get('wpm', 'N/A')} WPM", 
-                 "✓" if 120 <= float(speech_metrics.get('speed', {}).get('wpm', 0)) <= 160 else "✗"],
-                ["Filler Words", f"{speech_metrics.get('fluency', {}).get('fillersPerMin', 'N/A')}/min",
-                 "✓" if float(speech_metrics.get('fluency', {}).get('fillersPerMin', 0)) <= 3 else "✗"],
-                ["Speech Errors", f"{speech_metrics.get('fluency', {}).get('errorsPerMin', 'N/A')}/min",
-                 "✓" if float(speech_metrics.get('fluency', {}).get('errorsPerMin', 0)) <= 1 else "✗"]
-            ]
-            metrics_table = Table(metrics_data, colWidths=[200, 150, 100])
-            metrics_table.setStyle(TableStyle([
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 12),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-                ('TOPPADDING', (0, 0), (-1, -1), 8),
-            ]))
-            story.append(metrics_table)
-            story.append(Spacer(1, 20))
-
-        # Teaching Metrics
+        # Content Quality Metrics
+        story.append(Paragraph("Content Quality Metrics", heading1_style))
         teaching_data = evaluation_data.get('teaching', {}).get('Concept Assessment', {})
-        if teaching_data:
-            story.append(Paragraph("Teaching Metrics", heading2_style))
-            teaching_metrics = []
-            for category, data in teaching_data.items():
-                if isinstance(data, dict) and 'Score' in data:
-                    score = data.get('Score', 0)
-                    status = "✓" if score == 1 else "✗"
-                    teaching_metrics.append([category, f"{score}", status])
-            
-            if teaching_metrics:
-                teaching_table = Table(teaching_metrics, colWidths=[250, 100, 100])
-                teaching_table.setStyle(TableStyle([
-                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                    ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
-                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 0), (-1, 0), 12),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-                    ('TOPPADDING', (0, 0), (-1, -1), 8),
-                ]))
-                story.append(teaching_table)
-                story.append(Spacer(1, 20))
+        content_data = [
+            ["Metric", "Score", "Status"],
+            ["Content Accuracy", f"{teaching_data.get('Subject Matter Accuracy', {}).get('Score', 'N/A')}", 
+             "✓" if teaching_data.get('Subject Matter Accuracy', {}).get('Score', 0) == 1 else "✗"],
+            ["Industry Examples", f"{teaching_data.get('Examples and Business Context', {}).get('Score', 'N/A')}",
+             "✓" if teaching_data.get('Examples and Business Context', {}).get('Score', 0) == 1 else "✗"]
+        ]
+        
+        content_table = Table(content_data, colWidths=[200, 100, 100])
+        content_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(content_table)
+        story.append(Spacer(1, 20))
+
+        # Speech Metrics
+        story.append(Paragraph("Speech Metrics", heading1_style))
+        speech_metrics = evaluation_data.get('speech_metrics', {})
+        speech_data = [
+            ["Metric", "Value", "Status"],
+            ["Teaching Pace", f"{speech_metrics.get('speed', {}).get('wpm', 'N/A')} WPM",
+             "✓" if 120 <= float(speech_metrics.get('speed', {}).get('wpm', 0)) <= 160 else "✗"],
+            ["Fillers/Min", f"{speech_metrics.get('fluency', {}).get('fillersPerMin', 'N/A')}",
+             "✓" if float(speech_metrics.get('fluency', {}).get('fillersPerMin', 0)) <= 3 else "✗"],
+            ["Errors/Min", f"{speech_metrics.get('fluency', {}).get('errorsPerMin', 'N/A')}",
+             "✓" if float(speech_metrics.get('fluency', {}).get('errorsPerMin', 0)) <= 1 else "✗"],
+            ["Pitch Variation", f"{speech_metrics.get('pitch', {}).get('variationPercent', 'N/A')}%",
+             "✓" if float(speech_metrics.get('pitch', {}).get('variationPercent', 0)) >= 20 else "✗"],
+            ["Accent", speech_metrics.get('accent', {}).get('detected', 'N/A')],
+            ["Accent Confidence", f"{speech_metrics.get('accent', {}).get('confidence', 'N/A')}%"],
+            ["Accent Score", f"{speech_metrics.get('accent', {}).get('score', 'N/A')}/10"]
+        ]
+        
+        speech_table = Table(speech_data, colWidths=[200, 150, 100])
+        speech_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(speech_table)
+        story.append(Spacer(1, 20))
+
+        # Audio Analysis
+        story.append(Paragraph("Audio Analysis", heading1_style))
+        audio_features = evaluation_data.get('audio_features', {})
+        audio_data = [
+            ["Metric", "Value"],
+            ["Total Words", str(audio_features.get('total_words', 'N/A'))],
+            ["Duration (min)", f"{audio_features.get('duration_minutes', 'N/A'):.2f}"],
+            ["Detected Fillers", str(audio_features.get('detected_fillers', 'N/A'))],
+            ["Detected Errors", str(audio_features.get('detected_errors', 'N/A'))],
+            ["Pauses/Min", f"{audio_features.get('pauses_per_min', 'N/A'):.2f}"],
+            ["Monotone Score", f"{audio_features.get('monotone_score', 'N/A'):.2f}"],
+            ["Pitch Mean (Hz)", f"{audio_features.get('pitch_mean', 'N/A'):.2f}"],
+            ["Pitch Variation Coeff (%)", f"{audio_features.get('pitch_variation_coeff', 'N/A'):.2f}"],
+            ["Direction Changes/Min", f"{audio_features.get('direction_changes_per_min', 'N/A'):.2f}"],
+            ["Mean Amplitude", f"{audio_features.get('mean_amplitude', 'N/A'):.2f}"],
+            ["Amplitude Deviation", f"{audio_features.get('amplitude_deviation', 'N/A'):.2f}"]
+        ]
+        
+        audio_table = Table(audio_data, colWidths=[200, 150])
+        audio_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(audio_table)
+        story.append(Spacer(1, 20))
+
+        # Concept Evaluation
+        story.append(Paragraph("Concept Evaluation", heading1_style))
+        concept_data = []
+        for category, details in teaching_data.items():
+            if isinstance(details, dict):
+                score = details.get('Score', 'N/A')
+                citations = details.get('Citations', [])
+                concept_data.append([
+                    category,
+                    str(score),
+                    ", ".join(citations) if citations else "N/A"
+                ])
+                # Handle nested details (e.g., for QnA)
+                if "Details" in details and isinstance(details["Details"], dict):
+                    for subcat, subdetails in details["Details"].items():
+                        subscore = subdetails.get('Score', 'N/A')
+                        subcitations = subdetails.get('Citations', [])
+                        concept_data.append([
+                            f"{category} - {subcat}",
+                            str(subscore),
+                            ", ".join(subcitations) if subcitations else "N/A"
+                        ])
+        
+        concept_table = Table(concept_data, colWidths=[200, 100, 200])
+        concept_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(concept_table)
+        story.append(Spacer(1, 20))
+
+        # Code Evaluation
+        story.append(Paragraph("Code Evaluation", heading1_style))
+        code_data = evaluation_data.get('teaching', {}).get('Code Assessment', {})
+        code_metrics = []
+        for category, details in code_data.items():
+            if isinstance(details, dict):
+                score = details.get('Score', 'N/A')
+                citations = details.get('Citations', [])
+                code_metrics.append([
+                    category,
+                    str(score),
+                    ", ".join(citations) if citations else "N/A"
+                ])
+        
+        code_table = Table(code_metrics, colWidths=[200, 100, 200])
+        code_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(code_table)
 
         # Add a footer with page numbers
         def add_page_number(canvas, doc):
@@ -3524,3 +3626,4 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
         logger.error(f"Application error: {e}", exc_info=True)
+    
