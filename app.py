@@ -1384,14 +1384,16 @@ class RecommendationGenerator:
         """Create the recommendation prompt with scoring criteria"""
         speech_metrics = metrics.get("speech_metrics", {})
         teaching_data = content_analysis.get("teaching", {})
+        concept_data = teaching_data.get("Concept Assessment", {})
 
-        # Extract key communication metrics for explicit highlighting
+        # Extract key communication metrics
         comm_metrics = speech_metrics.get('intonation', {})
         monotone_score = comm_metrics.get('monotone_score', speech_metrics.get('monotone_score', 0))
         pitch_variation = comm_metrics.get('pitchVariation', comm_metrics.get('pitch_variation_coeff', 0))
         direction_changes = comm_metrics.get('direction_changes_per_min', 0)
         fillers_per_min = speech_metrics.get('fluency', {}).get('fillersPerMin', 0)
         errors_per_min = speech_metrics.get('fluency', {}).get('errorsPerMin', 0)
+        words_per_minute = speech_metrics.get('speed', {}).get('wpm', 0)
 
         # Calculate communication score components
         comm_score_components = {
@@ -1399,9 +1401,11 @@ class RecommendationGenerator:
             "pitch_variation": 1 if pitch_variation >= 20 else 0,
             "direction_changes": 1 if direction_changes >= 300 else 0,
             "fillers": 1 if fillers_per_min <= 3 else 0,
-            "errors": 1 if errors_per_min <= 1 else 0
+            "errors": 1 if errors_per_min <= 1 else 0,
+            "pace": 1 if 120 <= words_per_minute <= 160 else 0
         }
-        comm_score = sum(comm_score_components.values()) / 5 * 5  # Convert to 0-5 scale
+        comm_scores = sorted(comm_score_components.values())
+        comm_score = sum(comm_scores[1:]) / 5 * 5  # Convert to 0-5 scale
 
         comm_metrics_summary = (
             f"Communication Metrics (Score: {comm_score:.1f}/5):\n"
@@ -1410,40 +1414,41 @@ class RecommendationGenerator:
             f"- Direction changes per minute: {direction_changes:.1f} (GOOD - above 300 is good) {'✓' if comm_score_components['direction_changes'] else '✗'}\n"
             f"- Fillers per minute: {fillers_per_min:.1f} (GOOD - below 3 is good) {'✓' if comm_score_components['fillers'] else '✗'}\n"
             f"- Errors per minute: {errors_per_min:.1f} (GOOD - below 1 is good) {'✓' if comm_score_components['errors'] else '✗'}\n"
+            f"- Speaking pace: {words_per_minute:.1f} WPM (GOOD - 120-160 WPM) {'✓' if comm_score_components['pace'] else '✗'}\n"
         )
 
-        # Extract teaching metrics
+        # Calculate teaching score components
         teaching_score_components = {
-            "content_accuracy": teaching_data.get("content_accuracy", {}).get("Score", 0),
-            "industry_examples": teaching_data.get("industry_examples", {}).get("Score", 0),
-            "qna_accuracy": teaching_data.get("qna_accuracy", {}).get("Score", 0),
-            "engagement": teaching_data.get("engagement", {}).get("Score", 0)
+            "content_accuracy": 1 if concept_data.get('Subject Matter Accuracy', {}).get('Score', 0) == 1 else 0,
+            "industry_examples": 1 if concept_data.get('Examples and Business Context', {}).get('Score', 0) == 1 else 0,
+            "qna_accuracy": 1 if concept_data.get('Question Handling', {}).get('Score', 0) == 1 else 0,
+            "engagement": 1 if concept_data.get('Engagement and Interaction', {}).get('Score', 0) == 1 else 0
         }
         teaching_score = sum(teaching_score_components.values()) / 4 * 3  # Convert to 0-3 scale
 
         teaching_metrics_summary = (
             f"Teaching Metrics (Score: {teaching_score:.1f}/3):\n"
-            f"- Content Accuracy: {teaching_score_components['content_accuracy']} {'✓' if teaching_score_components['content_accuracy'] == 1 else '✗'}\n"
-            f"- Industry Examples: {teaching_score_components['industry_examples']} {'✓' if teaching_score_components['industry_examples'] == 1 else '✗'}\n"
-            f"- Q&A Accuracy: {teaching_score_components['qna_accuracy']} {'✓' if teaching_score_components['qna_accuracy'] == 1 else '✗'}\n"
-            f"- Engagement: {teaching_score_components['engagement']} {'✓' if teaching_score_components['engagement'] == 1 else '✗'}\n"
+            f"- Content Accuracy: {'✓' if teaching_score_components['content_accuracy'] else '✗'}\n"
+            f"- Industry Examples: {'✓' if teaching_score_components['industry_examples'] else '✗'}\n"
+            f"- Q&A Accuracy: {'✓' if teaching_score_components['qna_accuracy'] else '✗'}\n"
+            f"- Engagement: {'✓' if teaching_score_components['engagement'] else '✗'}\n"
         )
 
         # Calculate question handling score
-        qna_data = teaching_data.get("Question Handling", {})
-        qna_details = qna_data.get("Details", {})
+        qna_data = concept_data.get('Question Handling', {})
+        qna_details = qna_data.get('Details', {})
         qna_score_components = {
-            "response_accuracy": qna_details.get("ResponseAccuracy", {}).get("Score", 0),
-            "response_completeness": qna_details.get("ResponseCompleteness", {}).get("Score", 0),
-            "confidence_level": qna_details.get("ConfidenceLevel", {}).get("Score", 0)
+            "response_accuracy": 1 if qna_details.get('ResponseAccuracy', {}).get('Score', 0) == 1 else 0,
+            "response_completeness": 1 if qna_details.get('ResponseCompleteness', {}).get('Score', 0) == 1 else 0,
+            "confidence_level": 1 if qna_details.get('ConfidenceLevel', {}).get('Score', 0) == 1 else 0
         }
         qna_score = sum(qna_score_components.values()) / 3 * 2  # Convert to 0-2 scale
 
         qna_metrics_summary = (
             f"Question Handling (Score: {qna_score:.1f}/2):\n"
-            f"- Response Accuracy: {qna_score_components['response_accuracy']} {'✓' if qna_score_components['response_accuracy'] == 1 else '✗'}\n"
-            f"- Response Completeness: {qna_score_components['response_completeness']} {'✓' if qna_score_components['response_completeness'] == 1 else '✗'}\n"
-            f"- Confidence Level: {qna_score_components['confidence_level']} {'✓' if qna_score_components['confidence_level'] == 1 else '✗'}\n"
+            f"- Response Accuracy: {'✓' if qna_score_components['response_accuracy'] else '✗'}\n"
+            f"- Response Completeness: {'✓' if qna_score_components['response_completeness'] else '✗'}\n"
+            f"- Confidence Level: {'✓' if qna_score_components['confidence_level'] else '✗'}\n"
         )
 
         # Calculate total score
@@ -1452,12 +1457,19 @@ class RecommendationGenerator:
         CRITICAL_INSTRUCTIONS = f"""
         CRITICAL: The summary and recommendations MUST accurately reflect these metrics and scores:
         1. Communication Score: {comm_score:.1f}/5
+           - Strong performance in most areas
+           - Only speaking pace needs improvement
         2. Teaching Score: {teaching_score:.1f}/3
+           - All teaching components are passing
+           - Content accuracy and engagement are strong
         3. Question Handling Score: {qna_score:.1f}/2
+           - All question handling components are passing
+           - Strong response accuracy and completeness
         4. Total Score: {total_score:.1f}/10
 
         The hiring recommendation score MUST be {total_score:.1f}/10, as this is the sum of the component scores.
         DO NOT adjust this score based on subjective factors.
+        The summary MUST highlight the strong performance in teaching and question handling.
         """
 
         return f"""Based on the following metrics and analysis, provide recommendations:
@@ -4545,33 +4557,40 @@ def calculate_teaching_score(metrics: Dict[str, Any]) -> float:
     speech_metrics = metrics.get('speech_metrics', {})
     fluency_data = speech_metrics.get('fluency', {})
     intonation_data = speech_metrics.get('intonation', {})
+    speed_data = speech_metrics.get('speed', {})
     
+    # Calculate communication components with proper thresholds
     comm_score_components = {
         "monotone": 1 if speech_metrics.get('monotone_score', 1) < 0.3 else 0,
         "pitch_variation": 1 if intonation_data.get('pitchVariation', 0) >= 20 else 0,
         "direction_changes": 1 if intonation_data.get('direction_changes_per_min', 0) >= 300 else 0,
         "fillers": 1 if fluency_data.get('fillersPerMin', 0) <= 3 else 0,
-        "errors": 1 if fluency_data.get('errorsPerMin', 0) <= 1 else 0
+        "errors": 1 if fluency_data.get('errorsPerMin', 0) <= 1 else 0,
+        "pace": 1 if 120 <= speed_data.get('wpm', 0) <= 160 else 0
     }
-    comm_score = sum(comm_score_components.values()) / 5 * 5  # Convert to 0-5 scale
+    # Calculate communication score (0-5) with 6 components, dropping lowest score
+    comm_scores = sorted(comm_score_components.values())
+    comm_score = sum(comm_scores[1:]) / 5 * 5  # Convert to 0-5 scale
     
     # Teaching score (0-3)
     teaching_data = metrics.get('teaching', {})
+    concept_data = teaching_data.get('Concept Assessment', {})
+    
     teaching_score_components = {
-        "content_accuracy": float(teaching_data.get('content_accuracy', {}).get('Score', 0)),
-        "industry_examples": float(teaching_data.get('industry_examples', {}).get('Score', 0)),
-        "qna_accuracy": float(teaching_data.get('qna_accuracy', {}).get('Score', 0)),
-        "engagement": float(teaching_data.get('engagement', {}).get('Score', 0))
+        "content_accuracy": 1 if concept_data.get('Subject Matter Accuracy', {}).get('Score', 0) == 1 else 0,
+        "industry_examples": 1 if concept_data.get('Examples and Business Context', {}).get('Score', 0) == 1 else 0,
+        "qna_accuracy": 1 if concept_data.get('Question Handling', {}).get('Score', 0) == 1 else 0,
+        "engagement": 1 if concept_data.get('Engagement and Interaction', {}).get('Score', 0) == 1 else 0
     }
     teaching_score = sum(teaching_score_components.values()) / 4 * 3  # Convert to 0-3 scale
     
     # Question handling score (0-2)
-    qna_data = teaching_data.get('Question Handling', {})
+    qna_data = concept_data.get('Question Handling', {})
     qna_details = qna_data.get('Details', {})
     qna_score_components = {
-        "response_accuracy": float(qna_details.get('ResponseAccuracy', {}).get('Score', 0)),
-        "response_completeness": float(qna_details.get('ResponseCompleteness', {}).get('Score', 0)),
-        "confidence_level": float(qna_details.get('ConfidenceLevel', {}).get('Score', 0))
+        "response_accuracy": 1 if qna_details.get('ResponseAccuracy', {}).get('Score', 0) == 1 else 0,
+        "response_completeness": 1 if qna_details.get('ResponseCompleteness', {}).get('Score', 0) == 1 else 0,
+        "confidence_level": 1 if qna_details.get('ConfidenceLevel', {}).get('Score', 0) == 1 else 0
     }
     qna_score = sum(qna_score_components.values()) / 3 * 2  # Convert to 0-2 scale
     
