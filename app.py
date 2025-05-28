@@ -2505,19 +2505,28 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         # Speech Metrics
         story.append(Paragraph("Speech Metrics", heading1_style))
         speech_metrics = evaluation_data.get('speech_metrics', {})
+        
+        def safe_float_format(value, default='N/A'):
+            try:
+                if isinstance(value, (int, float)):
+                    return f"{float(value):.2f}"
+                return str(value) if value is not None else default
+            except (ValueError, TypeError):
+                return default
+
         speech_data = [
             ["Metric", "Value", "Status"],
-            ["Teaching Pace", f"{speech_metrics.get('speed', {}).get('wpm', 'N/A')} WPM",
+            ["Teaching Pace", f"{safe_float_format(speech_metrics.get('speed', {}).get('wpm'))} WPM",
              "✓" if 120 <= float(speech_metrics.get('speed', {}).get('wpm', 0)) <= 160 else "✗"],
-            ["Fillers/Min", f"{speech_metrics.get('fluency', {}).get('fillersPerMin', 'N/A')}",
+            ["Fillers/Min", safe_float_format(speech_metrics.get('fluency', {}).get('fillersPerMin')),
              "✓" if float(speech_metrics.get('fluency', {}).get('fillersPerMin', 0)) <= 3 else "✗"],
-            ["Errors/Min", f"{speech_metrics.get('fluency', {}).get('errorsPerMin', 'N/A')}",
+            ["Errors/Min", safe_float_format(speech_metrics.get('fluency', {}).get('errorsPerMin')),
              "✓" if float(speech_metrics.get('fluency', {}).get('errorsPerMin', 0)) <= 1 else "✗"],
-            ["Pitch Variation", f"{speech_metrics.get('pitch', {}).get('variationPercent', 'N/A')}%",
+            ["Pitch Variation", f"{safe_float_format(speech_metrics.get('pitch', {}).get('variationPercent'))}%",
              "✓" if float(speech_metrics.get('pitch', {}).get('variationPercent', 0)) >= 20 else "✗"],
-            ["Accent", speech_metrics.get('accent', {}).get('detected', 'N/A')],
-            ["Accent Confidence", f"{speech_metrics.get('accent', {}).get('confidence', 'N/A')}%"],
-            ["Accent Score", f"{speech_metrics.get('accent', {}).get('score', 'N/A')}/10"]
+            ["Accent", str(speech_metrics.get('accent', {}).get('detected', 'N/A'))],
+            ["Accent Confidence", f"{safe_float_format(speech_metrics.get('accent', {}).get('confidence'))}%"],
+            ["Accent Score", f"{safe_float_format(speech_metrics.get('accent', {}).get('score'))}/10"]
         ]
         
         speech_table = Table(speech_data, colWidths=[200, 150, 100])
@@ -2541,16 +2550,16 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         audio_data = [
             ["Metric", "Value"],
             ["Total Words", str(audio_features.get('total_words', 'N/A'))],
-            ["Duration (min)", f"{audio_features.get('duration_minutes', 'N/A'):.2f}"],
+            ["Duration (min)", safe_float_format(audio_features.get('duration_minutes'))],
             ["Detected Fillers", str(audio_features.get('detected_fillers', 'N/A'))],
             ["Detected Errors", str(audio_features.get('detected_errors', 'N/A'))],
-            ["Pauses/Min", f"{audio_features.get('pauses_per_min', 'N/A'):.2f}"],
-            ["Monotone Score", f"{audio_features.get('monotone_score', 'N/A'):.2f}"],
-            ["Pitch Mean (Hz)", f"{audio_features.get('pitch_mean', 'N/A'):.2f}"],
-            ["Pitch Variation Coeff (%)", f"{audio_features.get('pitch_variation_coeff', 'N/A'):.2f}"],
-            ["Direction Changes/Min", f"{audio_features.get('direction_changes_per_min', 'N/A'):.2f}"],
-            ["Mean Amplitude", f"{audio_features.get('mean_amplitude', 'N/A'):.2f}"],
-            ["Amplitude Deviation", f"{audio_features.get('amplitude_deviation', 'N/A'):.2f}"]
+            ["Pauses/Min", safe_float_format(audio_features.get('pauses_per_min'))],
+            ["Monotone Score", safe_float_format(audio_features.get('monotone_score'))],
+            ["Pitch Mean (Hz)", safe_float_format(audio_features.get('pitch_mean'))],
+            ["Pitch Variation Coeff (%)", safe_float_format(audio_features.get('pitch_variation_coeff'))],
+            ["Direction Changes/Min", safe_float_format(audio_features.get('direction_changes_per_min'))],
+            ["Mean Amplitude", safe_float_format(audio_features.get('mean_amplitude'))],
+            ["Amplitude Deviation", safe_float_format(audio_features.get('amplitude_deviation'))]
         ]
         
         audio_table = Table(audio_data, colWidths=[200, 150])
