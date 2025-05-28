@@ -1393,51 +1393,82 @@ class RecommendationGenerator:
         fillers_per_min = speech_metrics.get('fluency', {}).get('fillersPerMin', 0)
         errors_per_min = speech_metrics.get('fluency', {}).get('errorsPerMin', 0)
 
+        # Calculate communication score components
+        comm_score_components = {
+            "monotone": 1 if monotone_score < 0.3 else 0,
+            "pitch_variation": 1 if pitch_variation >= 20 else 0,
+            "direction_changes": 1 if direction_changes >= 300 else 0,
+            "fillers": 1 if fillers_per_min <= 3 else 0,
+            "errors": 1 if errors_per_min <= 1 else 0
+        }
+        comm_score = sum(comm_score_components.values()) / 5 * 5  # Convert to 0-5 scale
+
         comm_metrics_summary = (
-            f"Communication Metrics:\n"
-            f"- Monotone score: {monotone_score:.2f} (EXCELLENT - below 0.3 is good)\n"
-            f"- Pitch variation: {pitch_variation:.1f}% (GOOD - above 20% is good)\n"
-            f"- Direction changes per minute: {direction_changes:.1f} (GOOD - above 300 is good)\n"
-            f"- Fillers per minute: {fillers_per_min:.1f} (GOOD - below 3 is good)\n"
-            f"- Errors per minute: {errors_per_min:.1f} (GOOD - below 1 is good)\n"
+            f"Communication Metrics (Score: {comm_score:.1f}/5):\n"
+            f"- Monotone score: {monotone_score:.2f} (EXCELLENT - below 0.3 is good) {'✓' if comm_score_components['monotone'] else '✗'}\n"
+            f"- Pitch variation: {pitch_variation:.1f}% (GOOD - above 20% is good) {'✓' if comm_score_components['pitch_variation'] else '✗'}\n"
+            f"- Direction changes per minute: {direction_changes:.1f} (GOOD - above 300 is good) {'✓' if comm_score_components['direction_changes'] else '✗'}\n"
+            f"- Fillers per minute: {fillers_per_min:.1f} (GOOD - below 3 is good) {'✓' if comm_score_components['fillers'] else '✗'}\n"
+            f"- Errors per minute: {errors_per_min:.1f} (GOOD - below 1 is good) {'✓' if comm_score_components['errors'] else '✗'}\n"
         )
 
-        CRITICAL_INSTRUCTIONS = """
-        CRITICAL: The summary and recommendations MUST accurately reflect these metrics:
-        1. DO NOT claim "lack of pitch variation" when it's 29.1% (above target)
-        2. DO NOT claim "monotone delivery" when monotone score is 0.01 (excellent)
-        3. DO NOT claim "lack of direction changes" when it's 365.59/min (above target)
-        4. DO highlight low fillers (1.8/min) and errors (0.2/min) as STRENGTHS
-        5. The overall score should reflect these strong metrics
+        # Extract teaching metrics
+        teaching_score_components = {
+            "content_accuracy": teaching_data.get("content_accuracy", {}).get("Score", 0),
+            "industry_examples": teaching_data.get("industry_examples", {}).get("Score", 0),
+            "qna_accuracy": teaching_data.get("qna_accuracy", {}).get("Score", 0),
+            "engagement": teaching_data.get("engagement", {}).get("Score", 0)
+        }
+        teaching_score = sum(teaching_score_components.values()) / 4 * 3  # Convert to 0-3 scale
+
+        teaching_metrics_summary = (
+            f"Teaching Metrics (Score: {teaching_score:.1f}/3):\n"
+            f"- Content Accuracy: {teaching_score_components['content_accuracy']} {'✓' if teaching_score_components['content_accuracy'] == 1 else '✗'}\n"
+            f"- Industry Examples: {teaching_score_components['industry_examples']} {'✓' if teaching_score_components['industry_examples'] == 1 else '✗'}\n"
+            f"- Q&A Accuracy: {teaching_score_components['qna_accuracy']} {'✓' if teaching_score_components['qna_accuracy'] == 1 else '✗'}\n"
+            f"- Engagement: {teaching_score_components['engagement']} {'✓' if teaching_score_components['engagement'] == 1 else '✗'}\n"
+        )
+
+        # Calculate question handling score
+        qna_data = teaching_data.get("Question Handling", {})
+        qna_details = qna_data.get("Details", {})
+        qna_score_components = {
+            "response_accuracy": qna_details.get("ResponseAccuracy", {}).get("Score", 0),
+            "response_completeness": qna_details.get("ResponseCompleteness", {}).get("Score", 0),
+            "confidence_level": qna_details.get("ConfidenceLevel", {}).get("Score", 0)
+        }
+        qna_score = sum(qna_score_components.values()) / 3 * 2  # Convert to 0-2 scale
+
+        qna_metrics_summary = (
+            f"Question Handling (Score: {qna_score:.1f}/2):\n"
+            f"- Response Accuracy: {qna_score_components['response_accuracy']} {'✓' if qna_score_components['response_accuracy'] == 1 else '✗'}\n"
+            f"- Response Completeness: {qna_score_components['response_completeness']} {'✓' if qna_score_components['response_completeness'] == 1 else '✗'}\n"
+            f"- Confidence Level: {qna_score_components['confidence_level']} {'✓' if qna_score_components['confidence_level'] == 1 else '✗'}\n"
+        )
+
+        # Calculate total score
+        total_score = comm_score + teaching_score + qna_score
+
+        CRITICAL_INSTRUCTIONS = f"""
+        CRITICAL: The summary and recommendations MUST accurately reflect these metrics and scores:
+        1. Communication Score: {comm_score:.1f}/5
+        2. Teaching Score: {teaching_score:.1f}/3
+        3. Question Handling Score: {qna_score:.1f}/2
+        4. Total Score: {total_score:.1f}/10
+
+        The hiring recommendation score MUST be {total_score:.1f}/10, as this is the sum of the component scores.
+        DO NOT adjust this score based on subjective factors.
         """
 
         return f"""Based on the following metrics and analysis, provide recommendations:
 
 {comm_metrics_summary}
 
-Calculate the hiring recommendation score (0-10) based on these criteria:
+{teaching_metrics_summary}
 
-1. Communication Skills (0-5 points):
-   - Score 5 if ALL of these are true (CURRENT CASE):
-     * Monotone score < 0.3 (current: {monotone_score:.2f}) ✓
-     * Pitch variation >= 20% (current: {pitch_variation:.1f}%) ✓
-     * Direction changes per minute >= 300 (current: {direction_changes:.1f}) ✓
-     * Fillers per minute <= 3 (current: {fillers_per_min:.1f}) ✓
-     * Errors per minute <= 1 (current: {errors_per_min:.1f}) ✓
-   - Score 3 if MOST of these are true (at least 3 out of 5)
-   - Score 1 if FEW of these are true (1-2 out of 5)
-   - Score 0 if NONE of these are true
+{qna_metrics_summary}
 
-2. Teaching Effectiveness (0-3 points):
-   - Concept and code assessment
-   - Score 3 for clear, accurate, and insightful teaching; 0 for major errors or lack of clarity.
-
-3. Question Handling (0-2 points):
-   - Response accuracy, completeness, confidence
-   - If the speaker cannot answer questions, avoids them, or shows nervousness, score 0.
-   - If answers are clear, complete, and confident, score 2.
-
-**Important: The summary and recommendations MUST accurately reflect the actual metrics shown above. Do not make claims about poor communication if the metrics show good performance.**
+{CRITICAL_INSTRUCTIONS}
 
 Analyze the teaching style and provide:
 1. A simple and clear summary (3-5 short paragraphs)
@@ -1447,9 +1478,9 @@ Analyze the teaching style and provide:
 5. Overall teaching rigor assessment
 6. Question handling assessment (confidence, accuracy, and improvement areas)
 7. Hiring recommendation with detailed justification:
-   - Calculate and provide a score from 0-10
+   - Score MUST be {total_score:.1f}/10 (sum of component scores)
    - Provide 3-4 key reasons for the score
-   - List specific strengths and areas for improvement (Dont use complex terms just use simple language that is easy to understand)
+   - List specific strengths and areas for improvement (Use simple language)
 
 Required JSON structure:
 {{
@@ -1468,7 +1499,7 @@ Required JSON structure:
     }},
     "rigor": "Assessment of teaching rigor",
     "hiringRecommendation": {{
-        "score": number between 0 and 10,
+        "score": {total_score:.1f},
         "reasons": ["List of 3-4 key reasons for the score"],
         "strengths": ["List of key strengths that support hiring"],
         "concerns": ["List of key concerns or areas needing improvement"]
@@ -4510,42 +4541,50 @@ def validate_metrics(metrics: Dict[str, float]) -> Dict[str, bool]:
 
 def calculate_teaching_score(metrics: Dict[str, Any]) -> float:
     """Calculate overall teaching score with balanced weights"""
-    # Teaching quality components
-    content_score = float(metrics.get('content_accuracy', {}).get('Score', 0))
-    examples_score = float(metrics.get('industry_examples', {}).get('Score', 0))
-    qna_score = float(metrics.get('qna_accuracy', {}).get('Score', 0))
-    engagement_score = float(metrics.get('engagement', {}).get('Score', 0))
-    
-    # Communication components (normalized)
+    # Communication score (0-5)
     speech_metrics = metrics.get('speech_metrics', {})
     fluency_data = speech_metrics.get('fluency', {})
     intonation_data = speech_metrics.get('intonation', {})
     
-    # Calculate communication score with balanced thresholds
-    comm_score = (
-        (1 if fluency_data.get('fillersPerMin', 0) <= 2.5 else 0) * 0.2 +  # Balanced threshold
-        (1 if fluency_data.get('errorsPerMin', 0) <= 0.8 else 0) * 0.2 +   # Balanced threshold
-        (1 if 120 <= speech_metrics.get('speed', {}).get('wpm', 0) <= 160 else 0) * 0.2 +
-        (1 if 20 <= intonation_data.get('pitchVariation', 0) <= 40 else 0) * 0.2 +
-        (1 if intonation_data.get('direction_changes_per_min', 0) >= 300 else 0) * 0.2
-    )
+    comm_score_components = {
+        "monotone": 1 if speech_metrics.get('monotone_score', 1) < 0.3 else 0,
+        "pitch_variation": 1 if intonation_data.get('pitchVariation', 0) >= 20 else 0,
+        "direction_changes": 1 if intonation_data.get('direction_changes_per_min', 0) >= 300 else 0,
+        "fillers": 1 if fluency_data.get('fillersPerMin', 0) <= 3 else 0,
+        "errors": 1 if fluency_data.get('errorsPerMin', 0) <= 1 else 0
+    }
+    comm_score = sum(comm_score_components.values()) / 5 * 5  # Convert to 0-5 scale
     
-    # Calculate weighted score
-    weighted_score = (
-        content_score * TEACHING_METRIC_WEIGHTS['content_accuracy'] +
-        examples_score * TEACHING_METRIC_WEIGHTS['industry_examples'] +
-        qna_score * TEACHING_METRIC_WEIGHTS['qna_accuracy'] +
-        engagement_score * TEACHING_METRIC_WEIGHTS['engagement'] +
-        comm_score * TEACHING_METRIC_WEIGHTS['communication']
-    )
+    # Teaching score (0-3)
+    teaching_data = metrics.get('teaching', {})
+    teaching_score_components = {
+        "content_accuracy": float(teaching_data.get('content_accuracy', {}).get('Score', 0)),
+        "industry_examples": float(teaching_data.get('industry_examples', {}).get('Score', 0)),
+        "qna_accuracy": float(teaching_data.get('qna_accuracy', {}).get('Score', 0)),
+        "engagement": float(teaching_data.get('engagement', {}).get('Score', 0))
+    }
+    teaching_score = sum(teaching_score_components.values()) / 4 * 3  # Convert to 0-3 scale
+    
+    # Question handling score (0-2)
+    qna_data = teaching_data.get('Question Handling', {})
+    qna_details = qna_data.get('Details', {})
+    qna_score_components = {
+        "response_accuracy": float(qna_details.get('ResponseAccuracy', {}).get('Score', 0)),
+        "response_completeness": float(qna_details.get('ResponseCompleteness', {}).get('Score', 0)),
+        "confidence_level": float(qna_details.get('ConfidenceLevel', {}).get('Score', 0))
+    }
+    qna_score = sum(qna_score_components.values()) / 3 * 2  # Convert to 0-2 scale
+    
+    # Calculate total score (0-10)
+    total_score = comm_score + teaching_score + qna_score
     
     # Apply penalties for critical teaching issues
-    if content_score == 0:  # Content accuracy is critical
-        weighted_score *= 0.8  # 20% penalty
-    if qna_score == 0:  # Q&A accuracy is critical
-        weighted_score *= 0.9  # 10% penalty
+    if teaching_score_components['content_accuracy'] == 0:  # Content accuracy is critical
+        total_score *= 0.8  # 20% penalty
+    if teaching_score_components['qna_accuracy'] == 0:  # Q&A accuracy is critical
+        total_score *= 0.9  # 10% penalty
     
-    return weighted_score * 10  # Convert to 0-10 scale
+    return total_score
 
 def get_teaching_assessment(score: float) -> Dict[str, Any]:
     """Get teaching assessment based on score"""
