@@ -2352,88 +2352,209 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         teaching_score = calculate_teaching_score(evaluation_data)
         quality_assessment = assess_teaching_quality(evaluation_data)
 
-        # Create custom styles
+        # Create custom styles with improved formatting
+        title_style = ParagraphStyle(
+            'Title',
+            parent=styles['Title'],
+            fontSize=24,
+            spaceAfter=30,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor('#2c3e50')
+        )
         heading1_style = ParagraphStyle(
             'CustomHeading1',
             parent=styles['Heading1'],
-            fontSize=24,
-            spaceAfter=30
+            fontSize=20,
+            spaceAfter=20,
+            spaceBefore=20,
+            textColor=colors.HexColor('#2c3e50')
         )
         heading2_style = ParagraphStyle(
             'CustomHeading2',
             parent=styles['Heading2'],
-            fontSize=18,
-            spaceAfter=20
+            fontSize=16,
+            spaceAfter=15,
+            spaceBefore=15,
+            textColor=colors.HexColor('#34495e')
         )
         body_style = ParagraphStyle(
             'CustomBody',
             parent=styles['Normal'],
             fontSize=12,
-            spaceAfter=12
+            spaceAfter=10,
+            leading=14
         )
         score_style = ParagraphStyle(
             'Score',
             parent=styles['Normal'],
-            fontSize=16,
-            spaceAfter=12
+            fontSize=18,
+            spaceAfter=15,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        )
+        bullet_style = ParagraphStyle(
+            'Bullet',
+            parent=body_style,
+            leftIndent=20,
+            firstLineIndent=-10,
+            spaceBefore=5,
+            spaceAfter=5
         )
 
         story = []
         
-        # Title and Overall Score
-        story.append(Paragraph("Teaching Evaluation Report", heading1_style))
-        story.append(Paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M')}", body_style))
-        story.append(Spacer(1, 20))
+        # Title and Generation Date
+        story.append(Paragraph("Teaching Evaluation Report", title_style))
+        story.append(Paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M')}", 
+                             ParagraphStyle('Date', parent=body_style, alignment=TA_CENTER)))
+        story.append(Spacer(1, 30))
 
-        # Overall Score with color coding
+        # Overall Score Section with improved formatting
         score_color = colors.darkgreen if teaching_score >= 8 else colors.orange if teaching_score >= 6 else colors.red
-        score_style = ParagraphStyle(
+        overall_score_style = ParagraphStyle(
             'OverallScore',
             parent=score_style,
             textColor=score_color
         )
-        story.append(Paragraph(f"Overall Score: {teaching_score:.1f}/10", score_style))
-        story.append(Paragraph(f"Teaching Quality: {quality_assessment['overall_quality'].title()}", body_style))
-        story.append(Spacer(1, 20))
-
-        # Key Assessment Points
-        story.append(Paragraph("Key Assessment Points", heading2_style))
         
-        # Strengths
+        # Create a table for the score section
+        score_data = [
+            [Paragraph("Overall Score", heading2_style), 
+             Paragraph(f"{teaching_score:.1f}/10", overall_score_style)],
+            [Paragraph("Teaching Quality", heading2_style),
+             Paragraph(quality_assessment['overall_quality'].title(), body_style)]
+        ]
+        
+        score_table = Table(score_data, colWidths=[200, 200])
+        score_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f8f9fa')),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#2c3e50')),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (0, -1), 14),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+            ('TOPPADDING', (0, 0), (-1, -1), 12),
+        ]))
+        
+        story.append(score_table)
+        story.append(Spacer(1, 30))
+
+        # Key Assessment Points Section
+        story.append(Paragraph("Key Assessment Points", heading1_style))
+        
+        # Strengths Section
         if quality_assessment['strengths']:
-            story.append(Paragraph("Key Strengths:", heading2_style))
+            story.append(Paragraph("Key Strengths", heading2_style))
             for strength in quality_assessment['strengths']:
-                story.append(Paragraph(f"• {strength}", body_style))
-            story.append(Spacer(1, 10))
+                story.append(Paragraph(f"• {strength}", bullet_style))
+            story.append(Spacer(1, 15))
+        else:
+            story.append(Paragraph("No significant strengths identified", body_style))
+            story.append(Spacer(1, 15))
         
-        # Concerns
+        # Concerns Section
         if quality_assessment['concerns']:
-            story.append(Paragraph("Areas for Growth:", heading2_style))
+            story.append(Paragraph("Areas for Growth", heading2_style))
             for concern in quality_assessment['concerns']:
-                story.append(Paragraph(f"• {concern}", body_style))
-            story.append(Spacer(1, 10))
+                story.append(Paragraph(f"• {concern}", bullet_style))
+            story.append(Spacer(1, 15))
+        else:
+            story.append(Paragraph("No major concerns identified", body_style))
+            story.append(Spacer(1, 15))
         
-        # Reasons
+        # Reasons Section
         if quality_assessment['reasons']:
-            story.append(Paragraph("Key Reasons:", heading2_style))
+            story.append(Paragraph("Key Reasons", heading2_style))
             for reason in quality_assessment['reasons']:
-                story.append(Paragraph(f"• {reason}", body_style))
-            story.append(Spacer(1, 10))
+                story.append(Paragraph(f"• {reason}", bullet_style))
+            story.append(Spacer(1, 15))
+        else:
+            story.append(Paragraph("No specific reasons provided", body_style))
+            story.append(Spacer(1, 15))
 
-        # Continue with the rest of the report...
+        # Add detailed metrics section
+        story.append(Paragraph("Detailed Metrics", heading1_style))
+        
+        # Communication Metrics
+        speech_metrics = evaluation_data.get('speech_metrics', {})
+        if speech_metrics:
+            story.append(Paragraph("Communication Metrics", heading2_style))
+            metrics_data = [
+                ["Metric", "Value", "Status"],
+                ["Speaking Pace", f"{speech_metrics.get('speed', {}).get('wpm', 'N/A')} WPM", 
+                 "✓" if 120 <= float(speech_metrics.get('speed', {}).get('wpm', 0)) <= 160 else "✗"],
+                ["Filler Words", f"{speech_metrics.get('fluency', {}).get('fillersPerMin', 'N/A')}/min",
+                 "✓" if float(speech_metrics.get('fluency', {}).get('fillersPerMin', 0)) <= 3 else "✗"],
+                ["Speech Errors", f"{speech_metrics.get('fluency', {}).get('errorsPerMin', 'N/A')}/min",
+                 "✓" if float(speech_metrics.get('fluency', {}).get('errorsPerMin', 0)) <= 1 else "✗"]
+            ]
+            metrics_table = Table(metrics_data, colWidths=[200, 150, 100])
+            metrics_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ]))
+            story.append(metrics_table)
+            story.append(Spacer(1, 20))
 
-        doc.build(story)
+        # Teaching Metrics
+        teaching_data = evaluation_data.get('teaching', {}).get('Concept Assessment', {})
+        if teaching_data:
+            story.append(Paragraph("Teaching Metrics", heading2_style))
+            teaching_metrics = []
+            for category, data in teaching_data.items():
+                if isinstance(data, dict) and 'Score' in data:
+                    score = data.get('Score', 0)
+                    status = "✓" if score == 1 else "✗"
+                    teaching_metrics.append([category, f"{score}", status])
+            
+            if teaching_metrics:
+                teaching_table = Table(teaching_metrics, colWidths=[250, 100, 100])
+                teaching_table.setStyle(TableStyle([
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 12),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('TOPPADDING', (0, 0), (-1, -1), 8),
+                ]))
+                story.append(teaching_table)
+                story.append(Spacer(1, 20))
+
+        # Add a footer with page numbers
+        def add_page_number(canvas, doc):
+            canvas.saveState()
+            canvas.setFont('Helvetica', 9)
+            canvas.drawRightString(
+                doc.pagesize[0] - doc.rightMargin,
+                doc.bottomMargin/2,
+                f"Page {doc.page}"
+            )
+            canvas.restoreState()
+
+        # Build the PDF with page numbers
+        doc.build(story, onFirstPage=add_page_number, onLaterPages=add_page_number)
         pdf_data = buffer.getvalue()
         buffer.close()
         logger.info("PDF report generated successfully.")
         return pdf_data
 
     except ImportError:
-         logger.error("Reportlab not installed. Cannot generate PDF.")
-         raise RuntimeError("PDF generation requires 'reportlab' library. Please install it (`pip install reportlab`).")
+        logger.error("Reportlab not installed. Cannot generate PDF.")
+        raise RuntimeError("PDF generation requires 'reportlab' library. Please install it (`pip install reportlab`).")
     except Exception as e:
-        logger.error(f"Error generating PDF report: {e}", exc_info=True) # Log traceback
-        # Provide a more informative error message
+        logger.error(f"Error generating PDF report: {e}", exc_info=True)
         raise RuntimeError(f"Failed to generate PDF report: {str(e)}. Check logs for details.")
 
 class GoogleDriveHandler:
