@@ -162,11 +162,11 @@ def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_
         intonation_display_data = audio_features.get("monotone_score", ""), audio_features.get("pitch_mean", ""), audio_features.get("pitch_variation_coeff", ""), audio_features.get("direction_changes_per_min", "")
         energy_display_data = audio_features.get("mean_amplitude", ""), audio_features.get("amplitude_deviation", "")
 
-        # Calculate acceptance status for communication metrics
-        speed_accepted = 1 if 120 <= float(words_per_minute or 0) <= 160 else 0
-        fillers_accepted = 1 if float(fillers_per_min or 0) <= 3 else 0
-        errors_accepted = 1 if float(errors_per_min or 0) <= 1 else 0
-        pitch_accepted = 1 if float(pitch_variation or 0) >= 20 else 0
+        # Calculate binary acceptance indicators
+        speaking_pace_accepted = 1 if 120 <= float(words_per_minute or 0) <= 160 else 0
+        filler_words_accepted = 1 if float(fillers_per_min or 0) <= 3 else 0
+        speech_errors_accepted = 1 if float(errors_per_min or 0) <= 1 else 0
+        pitch_variations_accepted = 1 if float(pitch_variation or 0) >= 20 else 0
 
         # --- Teaching Analysis (flatten all categories) ---
         concept_flat = {}
@@ -195,7 +195,11 @@ def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_
             total_words, duration_minutes, detected_fillers, detected_errors, pauses_per_min,
             intonation_display_data[0], intonation_display_data[1], intonation_display_data[2], intonation_display_data[3],
             energy_display_data[0], energy_display_data[1],
-            speed_accepted, fillers_accepted, errors_accepted, pitch_accepted,  # Add acceptance status columns
+            # Add binary acceptance indicators
+            speaking_pace_accepted,
+            filler_words_accepted,
+            speech_errors_accepted,
+            pitch_variations_accepted,
         ]
         # Add all concept/code assessment fields
         for k in sorted(concept_flat):
@@ -211,7 +215,11 @@ def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_
             "Total Words", "Duration (min)", "Detected Fillers", "Detected Errors", "Pauses/Min",
             "Monotone Score", "Pitch Mean (Hz)", "Pitch Variation Coeff (%)", "Direction Changes/Min",
             "Mean Amplitude", "Amplitude Deviation",
-            "Speed Accepted", "Fillers Accepted", "Errors Accepted", "Pitch Accepted",  # Add acceptance status headers
+            # Add binary acceptance indicator headers
+            "Speaking Pace Accepted",
+            "Filler Words Accepted",
+            "Speech Errors Accepted",
+            "Pitch Variations Accepted",
         ]
         for k in sorted(concept_flat):
             header.append(k)
@@ -1419,10 +1427,10 @@ class RecommendationGenerator:
 
         # Calculate teaching score components
         teaching_score_components = {
-            "content_accuracy": 1 if concept_data.get('Subject Matter Accuracy', {}).get('Score', 0) == 1 else 0,
-            "industry_examples": 1 if concept_data.get('Examples and Business Context', {}).get('Score', 0) == 1 else 0,
-            "qna_accuracy": 1 if concept_data.get('Question Handling', {}).get('Score', 0) == 1 else 0,
-            "engagement": 1 if concept_data.get('Engagement and Interaction', {}).get('Score', 0) == 1 else 0
+            "content_accuracy": 1 if concept_data.get('Subject Matter Accuracy', {}).get('Score', 0) == 1 else 0.5 if concept_data.get('Subject Matter Accuracy', {}).get('Score', 0) == 0.5 else 0,
+            "industry_examples": 1 if concept_data.get('Examples and Business Context', {}).get('Score', 0) == 1 else 0.5 if concept_data.get('Examples and Business Context', {}).get('Score', 0) == 0.5 else 0,
+            "qna_accuracy": 1 if concept_data.get('Question Handling', {}).get('Score', 0) == 1 else 0.5 if concept_data.get('Question Handling', {}).get('Score', 0) == 0.5 else 0,
+            "engagement": 1 if concept_data.get('Engagement and Interaction', {}).get('Score', 0) == 1 else 0.5 if concept_data.get('Engagement and Interaction', {}).get('Score', 0) == 0.5 else 0
         }
         teaching_score = sum(teaching_score_components.values()) / 4 * 3  # Convert to 0-3 scale
 
@@ -2130,6 +2138,10 @@ def validate_video_file(file_path: str):
 
 def display_evaluation(evaluation: Dict[str, Any]):
     try:
+        # Calculate teaching score and quality assessment
+        teaching_score = calculate_teaching_score(evaluation)
+        quality_assessment = assess_teaching_quality(evaluation)
+        
         # Add a more prominent summary section at the top
         st.markdown("""
             <div class="summary-header">
@@ -2141,942 +2153,70 @@ def display_evaluation(evaluation: Dict[str, Any]):
         # Create a summary row with key metrics using a more prominent style
         col1, col2, col3, col4 = st.columns(4)
         
-        # Communication Score with color coding
-        with col1:
-            speech_metrics = evaluation.get("speech_metrics", {})
-            speed_data = speech_metrics.get("speed", {})
-            words_per_minute = speed_data.get("wpm", 0)
-            speed_score = "✅" if 120 <= words_per_minute <= 160 else "❌"
-            st.markdown("""
-                <div class="metric-box">
-                    <h3>Communication</h3>
-                    <div class="score">{}</div>
-                    <div class="detail">WPM: {:.1f}</div>
-                </div>
-            """.format(speed_score, words_per_minute), unsafe_allow_html=True)
-        
-        # Teaching Score with color coding
-        with col2:
-            teaching_data = evaluation.get("teaching", {})
-            concept_data = teaching_data.get("Concept Assessment", {})
-            teaching_score = "✅" if all(d.get("Score", 0) == 1 for d in concept_data.values()) else "❌"
-            st.markdown("""
-                <div class="metric-box">
-                    <h3>Teaching</h3>
-                    <div class="score">{}</div>
-                    <div class="detail">Concepts: {}/{} Pass</div>
-                </div>
-            """.format(teaching_score, sum(1 for d in concept_data.values() if d.get("Score", 0) == 1), len(concept_data)), unsafe_allow_html=True)
-        
         # Overall Score with color coding
+        with col1:
+            score_color = "#2ecc71" if teaching_score >= 8 else "#f1c40f" if teaching_score >= 6 else "#e67e22" if teaching_score >= 4 else "#e74c3c"
+            st.markdown("""
+                <div class="metric-box">
+                    <h3>Overall Score</h3>
+                    <div class="score" style="color: {}">{:.1f}/10</div>
+                    <div class="quality">Quality: {}</div>
+                </div>
+            """.format(score_color, teaching_score, quality_assessment['overall_quality'].title()), unsafe_allow_html=True)
+        
+        # Teaching Quality
+        with col2:
+            quality_color = "#2ecc71" if quality_assessment['overall_quality'] == 'high' else "#f1c40f" if quality_assessment['overall_quality'] == 'medium' else "#e74c3c"
+            st.markdown("""
+                <div class="metric-box">
+                    <h3>Teaching Quality</h3>
+                    <div class="score" style="color: {}">{}</div>
+                    <div class="detail">Based on comprehensive assessment</div>
+                </div>
+            """.format(quality_color, quality_assessment['overall_quality'].title()), unsafe_allow_html=True)
+        
+        # Strengths Count
         with col3:
-            overall_score = "✅" if speed_score == "✅" and teaching_score == "✅" else "❌"
             st.markdown("""
                 <div class="metric-box">
-                    <h3>Overall</h3>
+                    <h3>Key Strengths</h3>
                     <div class="score">{}</div>
+                    <div class="detail">Areas of excellence</div>
                 </div>
-            """.format(overall_score), unsafe_allow_html=True)
+            """.format(len(quality_assessment['strengths'])), unsafe_allow_html=True)
         
-        # Duration with formatting
+        # Concerns Count
         with col4:
-            audio_features = evaluation.get("audio_features", {})
-            duration = audio_features.get("duration", 0)
             st.markdown("""
                 <div class="metric-box">
-                    <h3>Duration</h3>
-                    <div class="score">{:.1f} min</div>
+                    <h3>Areas for Growth</h3>
+                    <div class="score">{}</div>
+                    <div class="detail">Areas needing improvement</div>
                 </div>
-            """.format(duration), unsafe_allow_html=True)
+            """.format(len(quality_assessment['concerns'])), unsafe_allow_html=True)
         
-        # Add custom CSS for better visibility
-        st.markdown("""
-        <style>
-            .metric-box {
-                background-color: #ffffff;
-                border: 1px solid #e0e0e0;
-                padding: 20px;
-                border-radius: 10px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                text-align: center;
-            }
-            .metric-box h3 {
-                color: #1f77b4;
-                margin-bottom: 10px;
-            }
-            .metric-box .score {
-                font-size: 24px;
-                font-weight: bold;
-                margin: 10px 0;
-            }
-            .metric-box .detail {
-                color: #666;
-                font-size: 14px;
-            }
-            .filler-card {
-                background-color: #f8f9fa;
-                border: 1px solid #e0e0e0;
-                padding: 10px;
-                margin: 5px;
-                border-radius: 5px;
-                text-align: center;
-            }
-            .filler-word {
-                font-weight: bold;
-                color: #1f77b4;
-            }
-            .filler-count {
-                color: #666;
-                font-size: 12px;
-            }
-            .error-context {
-                background-color: #fff3f3;
-                border-left: 4px solid #ff4444;
-                padding: 10px;
-                margin: 5px 0;
-                border-radius: 4px;
-            }
-            .error-label {
-                font-weight: bold;
-                color: #ff4444;
-            }
-            .error-text {
-                color: #666;
-            }
-        </style>
-        """, unsafe_allow_html=True)
+        # Display Strengths and Concerns
+        st.markdown("## Key Assessment Points")
         
-        # Add hover effects and better visual separation
-        st.markdown("""
-        <style>
-            .metric-box {
-                transition: transform 0.2s;
-                cursor: pointer;
-            }
-            .metric-box:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            }
-            .metric-box .score {
-                font-size: 28px;
-                margin: 15px 0;
-            }
-            .metric-box .detail {
-                font-size: 16px;
-                color: #666;
-            }
-        </style>
-        """, unsafe_allow_html=True)
+        # Strengths
+        if quality_assessment['strengths']:
+            st.markdown("### ✅ Key Strengths")
+            for strength in quality_assessment['strengths']:
+                st.markdown(f"- {strength}")
         
-        # Improve the visibility of error contexts
-        st.markdown("""
-        <style>
-            .error-context {
-                background-color: #fff3f3;
-                border-left: 4px solid #ff4444;
-                padding: 15px;
-                margin: 10px 0;
-                border-radius: 4px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            }
-            .error-label {
-                font-weight: bold;
-                color: #ff4444;
-                margin-bottom: 5px;
-            }
-            .error-text {
-                color: #666;
-                font-size: 14px;
-                line-height: 1.4;
-            }
-        </style>
-        """, unsafe_allow_html=True)
+        # Concerns
+        if quality_assessment['concerns']:
+            st.markdown("### ⚠️ Areas for Growth")
+            for concern in quality_assessment['concerns']:
+                st.markdown(f"- {concern}")
         
-        # Improve transcript readability
-        st.markdown("""
-        <style>
-            .transcript-line {
-                padding: 10px;
-                margin: 5px 0;
-                border-radius: 4px;
-                background-color: #f8f9fa;
-                transition: background-color 0.2s;
-            }
-            .transcript-line:hover {
-                background-color: #e9ecef;
-            }
-            .timestamp {
-                color: #666;
-                font-weight: bold;
-                margin-right: 10px;
-                font-family: monospace;
-            }
-            .sentence {
-                color: #333;
-                line-height: 1.5;
-            }
-        </style>
-        """, unsafe_allow_html=True)
+        # Reasons
+        if quality_assessment['reasons']:
+            st.markdown("### 📝 Key Reasons")
+            for reason in quality_assessment['reasons']:
+                st.markdown(f"- {reason}")
         
-        # Continue with existing tabs...
-        tabs = st.tabs(["Communication", "Teaching", "Recommendations", "Transcript"])
-        
-        with tabs[0]:
-            st.header("Communication Metrics")
-            
-            # Add a progress bar for overall communication score
-            speech_metrics = evaluation.get("speech_metrics", {})
-            speed_data = speech_metrics.get("speed", {})
-            words_per_minute = speed_data.get("wpm", 0)
-            
-            # Calculate overall communication score
-            speed_score = 1 if 120 <= words_per_minute <= 160 else 0
-            fluency_data = speech_metrics.get("fluency", {})
-            fillers_per_minute = float(fluency_data.get("fillersPerMin", 0))
-            errors_per_minute = float(fluency_data.get("errorsPerMin", 0))
-            fluency_score = 1 if fillers_per_minute <= 3 and errors_per_minute <= 1 else 0
-            
-            overall_score = (speed_score + fluency_score) / 2
-            st.progress(overall_score, text="Overall Communication Score")
-            
-            # Continue with existing metrics...
-            
-            # Speed Metrics
-            st.subheader("🏃 Speed")
-            speed_data = speech_metrics.get("speed", {})
-            words_per_minute = speed_data.get("wpm", 0)
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Score", "✅ Pass" if 120 <= words_per_minute <= 160 else "❌ Needs Improvement")
-                st.metric("Words per Minute", f"{words_per_minute:.1f}")
-            with col2:
-                st.info("""
-                **Acceptable Range:** 120-160 WPM
-                - Optimal teaching pace: 130-160 WPM
-                """)
-
-            # Fluency Metrics
-            st.subheader("🗣️ Fluency")
-            speech_metrics = evaluation.get("speech_metrics", {})
-            fluency_data = speech_metrics.get("fluency", {})
-            
-            fillers_per_minute = float(fluency_data.get("fillersPerMin", 0))
-            errors_per_minute = float(fluency_data.get("errorsPerMin", 0))
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Score", "✅ Pass" if fillers_per_minute <= 3 and errors_per_minute <= 1 else "❌ Needs Improvement")
-                st.metric("Fillers per Minute", f"{fillers_per_minute:.1f}")
-                st.metric("Errors per Minute", f"{errors_per_minute:.1f}")
-            
-            with col2:
-                st.info("""
-                **Acceptable Ranges:**
-                - Fillers per Minute: <3
-                - Errors per Minute: <1
-                
-                Analyzed using AI to detect context-appropriate usage.
-                """)
-
-            # Display filler words and errors in separate sections
-            if "detectedFillers" in fluency_data:
-                st.markdown("### 🗣️ Detected Filler Words")
-                filler_data = fluency_data["detectedFillers"]
-                
-                if filler_data:
-                    cols = st.columns(3)
-                    for i, filler in enumerate(filler_data):
-                        with cols[i % 3]:
-                            st.markdown(
-                                f"""
-                                <div class="filler-card">
-                                    <div class="filler-word">"{filler['word']}"</div>
-                                    <div class="filler-count">Count: {filler['count']}</div>
-                                </div>
-                                """,
-                                unsafe_allow_html=True
-                            )
-
-            if "detectedErrors" in fluency_data:
-                st.markdown("### ⚠️ Speech Errors")
-                error_data = fluency_data["detectedErrors"]
-                
-                for error in error_data:
-                    st.markdown(f"**{error['type']}** (Count: {error['count']})")
-                    if 'context' in error and error['context']:
-                        st.markdown("""
-                            <div class="error-context">
-                                <div class="error-label">Context:</div>
-                                <div class="error-text">{}</div>
-                            </div>
-                        """.format(error['context']), unsafe_allow_html=True)
-
-            # Continue with other metrics sections similarly...
-            # Flow Metrics
-            st.subheader("🌊 Flow")
-            pauses_per_minute = float(audio_features.get("pauses_per_minute", 0))
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Score", "✅ Pass" if pauses_per_minute <= 12 else "❌ Needs Improvement")
-                st.metric("Pauses per Minute", f"{pauses_per_minute:.1f}")
-            with col2:
-                st.info("""
-                **Acceptable Range:** 
-                - Pauses per Minute: <12
-                - Strategic pauses (8-12 PPM) aid comprehension
-                """)
-
-            # Intonation Metrics
-            st.subheader("🎵 Intonation")
-            pitch_mean = float(audio_features.get("pitch_mean", 0))
-            pitch_std = float(audio_features.get("pitch_std", 0))
-            pitch_variation_coeff = float(audio_features.get("pitch_variation_coeff", 0))
-            monotone_score = float(audio_features.get("monotone_score", 0))
-            direction_changes = float(audio_features.get("direction_changes_per_min", 0))
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Monotone Score", f"{monotone_score:.2f}")
-                st.metric("Pitch Variation", f"{pitch_variation_coeff:.1f}%")
-                st.metric("Direction Changes/Min", f"{direction_changes:.1f}")
-            with col2:
-                # Add interpretation guide with stricter thresholds
-                st.info("""
-                **Monotone Analysis:**
-                - Pitch Variation: 20-40% is optimal
-                - Direction Changes: 300-600/min is optimal
-                
-                **Recommendations:**
-                - Aim for pitch variation 20-40%
-                - Target 300-600 direction changes/min
-                - Use stress patterns for key points
-                """)
-
-                # Add visual indicator only for warning cases
-                if monotone_score > 0.4 or pitch_variation_coeff < 20 or pitch_variation_coeff > 40 or direction_changes < 300 or direction_changes > 600:
-                    st.warning("⚠️ Speech patterns need adjustment. Consider varying pitch and pace more naturally.")
-
-            # Energy Metrics
-            st.subheader("⚡ Energy")
-            mean_amplitude = float(audio_features.get("mean_amplitude", 0))
-            amplitude_deviation = float(audio_features.get("amplitude_deviation", 0))
-            sigma_mu_ratio = float(amplitude_deviation) if mean_amplitude > 0 else 0
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Mean Amplitude", f"{mean_amplitude:.1f}")
-                st.metric("Amplitude Deviation (σ)", f"{amplitude_deviation:.3f}")
-            with col2:
-                st.info("""
-                **Acceptable Ranges:**
-                - Mean Amplitude: 60-75
-                - Amplitude Deviation: 0.05-0.15
-                """)
-
-        with tabs[1]:
-            st.header("Teaching Analysis")
-            
-            # Add a radar chart for teaching metrics
-            concept_data = teaching_data.get("Concept Assessment", {})
-            categories = list(concept_data.keys())
-            scores = [details.get("Score", 0) for details in concept_data.values()]
-            
-            # Create a radar chart using plotly
-            fig = go.Figure()
-            fig.add_trace(go.Scatterpolar(
-                r=scores,
-                theta=categories,
-                fill='toself',
-                name='Teaching Metrics'
-            ))
-            fig.update_layout(
-                polar=dict(
-                    radialaxis=dict(
-                        visible=True,
-                        range=[0, 1]
-                    )),
-                showlegend=False
-            )
-            st.plotly_chart(fig)
-            
-            # Continue with existing content...
-            
-            # Get teaching data from evaluation results
-            teaching_data = evaluation.get("teaching", {})
-            
-            # Replace expanders with sections
-            st.subheader("📚 Concept Assessment")
-            concept_data = teaching_data.get("Concept Assessment", {})
-            
-            for category, details in concept_data.items():
-                if category == "Question Handling":
-                    continue
-                
-                score = details.get("Score", 0)
-                citations = details.get("Citations", [])
-                
-                # Use columns for layout
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    st.markdown(f"**{category}**")
-                with col2:
-                    st.markdown("✅ Pass" if score == 1 else "❌ Needs Work")
-                
-                if citations:
-                    st.markdown("##### 📝 Supporting Evidence")
-                    for citation in citations:
-                        st.markdown(f"- {citation}")
-
-            # Code Assessment Section
-            st.subheader("💻 Code Assessment")
-            code_data = teaching_data.get("Code Assessment", {})
-            
-            for category, details in code_data.items():
-                score = details.get("Score", 0)
-                citations = details.get("Citations", [])
-                
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    st.markdown(f"**{category}**")
-                with col2:
-                    st.markdown("✅ Pass" if score == 1 else "❌ Needs Work")
-                
-                if citations:
-                    st.markdown("##### 📝 Supporting Evidence")
-                    for citation in citations:
-                        st.markdown(f"- {citation}")
-
-        with tabs[2]:
-            st.header("Recommendations")
-            
-            # Create a container for key recommendations
-            with st.container():
-                # Get recommendations from evaluation data first
-                recommendations = evaluation.get("recommendations", {})
-                if not recommendations:
-                    st.warning("No recommendations data available.")
-                    return
-                
-                # Get hiring recommendation data
-                hiring_rec = recommendations.get("hiringRecommendation", {})
-                score = hiring_rec.get("score", 0)
-                reasons = hiring_rec.get("reasons", [])
-                strengths = hiring_rec.get("strengths", [])
-                concerns = hiring_rec.get("concerns", [])
-
-                # Overall Score and Reasons - Moved to top
-                st.markdown("""
-                    <div style='background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px;'>
-                        <div style='display: flex; align-items: center; margin-bottom: 15px;'>
-                            <h4 style='color: #1f77b4; font-size: 24px; margin: 0;'>🎯 Overall Assessment Score</h4>
-                            <div style='margin-left: 20px; padding: 8px 20px; background-color: {color}; color: white; border-radius: 15px; font-size: 20px;'>
-                                {score}/10
-                            </div>
-                        </div>
-                        <div style='margin-top: 15px;'>
-                            <h5 style='color: #666; font-size: 16px; margin-bottom: 10px;'>Key Reasons:</h5>
-                            <ul style='list-style-type: none; padding-left: 0;'>
-                                {reasons_list}
-                            </ul>
-                        </div>
-                    </div>
-                """.format(
-                    color='#2ecc71' if score >= 7 else '#f1c40f' if score >= 5 else '#e74c3c',
-                    score=score,
-                    reasons_list="\n".join([f"<li style='color: #333; margin-bottom: 8px; font-size: 16px;'>• {r}</li>" for r in reasons])
-                ), unsafe_allow_html=True)
-
-                # Overall Summary
-                summary = recommendations.get("summary", "No summary available")
-                st.markdown("""
-                    <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
-                        <h3 style='color: #1f77b4; margin-bottom: 15px;'>📝 Overall Summary</h3>
-                        <p style='color: #333; line-height: 1.6;'>{}</p>
-                    </div>
-                """.format(summary), unsafe_allow_html=True)
-
-                # Get recommendations from evaluation data
-                recommendations = evaluation.get("recommendations", {})
-                summary = recommendations.get("summary", "No summary available")
-                
-                # Get teaching data for detailed assessment
-                teaching_data = evaluation.get("teaching", {})
-                concept_data = teaching_data.get("Concept Assessment", {})
-                speech_metrics = evaluation.get("speech_metrics", {})
-                audio_features = evaluation.get("audio_features", {})
-                
-                # Content Accuracy Assessment
-                content_accuracy = concept_data.get("Subject Matter Accuracy", {})
-                content_score = content_accuracy.get("Score", 0)
-                content_citations = content_accuracy.get("Citations", [])
-                
-                # Industry Examples Assessment
-                examples = concept_data.get("Examples and Business Context", {})
-                examples_score = examples.get("Score", 0)
-                examples_citations = examples.get("Citations", [])
-                
-                # Pace Assessment
-                speed_data = speech_metrics.get("speed", {})
-                words_per_minute = speed_data.get("wpm", 0)
-                pace_score = 1 if 120 <= words_per_minute <= 160 else 0
-                
-                # QnA Assessment
-                qna_data = concept_data.get("Question Handling", {})
-                qna_score = qna_data.get("Score", 0)
-                qna_details = qna_data.get("Details", {})
-                response_accuracy = qna_details.get("ResponseAccuracy", {}).get("Score", 0)
-                response_completeness = qna_details.get("ResponseCompleteness", {}).get("Score", 0)
-                
-                # Accent Assessment
-                accent_info = audio_features.get("accent_classification", {})
-                accent = accent_info.get("accent", "Unknown")
-                accent_confidence = accent_info.get("confidence", 0)
-                
-                # Create a 2x3 grid for key aspects using columns
-                col1, col2, col3 = st.columns(3)
-                
-                # Content Accuracy
-                with col1:
-                    st.markdown("""
-                        <div style='background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                            <h4 style='color: #1f77b4; font-size: 16px;'>📚 Content Accuracy</h4>
-                            <div style='display: flex; align-items: center; margin-top: 10px;'>
-                                <span style='font-size: 20px; margin-right: 10px;'>{icon}</span>
-                                <span style='color: #666;'>{label}</span>
-                            </div>
-                        </div>
-                    """.format(
-                        icon="✅" if content_score == 1 else "❌",
-                        label="Accurate" if content_score == 1 else "Needs Review"
-                    ), unsafe_allow_html=True)
-                
-                # Industry Examples
-                with col2:
-                    st.markdown("""
-                        <div style='background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                            <h4 style='color: #1f77b4; font-size: 16px;'>💼 Industry Examples</h4>
-                            <div style='display: flex; align-items: center; margin-top: 10px;'>
-                                <span style='font-size: 20px; margin-right: 10px;'>{icon}</span>
-                                <span style='color: #666;'>{label}</span>
-                            </div>
-                        </div>
-                    """.format(
-                        icon="✅" if examples_score == 1 else "❌",
-                        label="Well Used" if examples_score == 1 else "Could Improve"
-                    ), unsafe_allow_html=True)
-                
-                # Teaching Pace
-                with col3:
-                    st.markdown("""
-                        <div style='background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                            <h4 style='color: #1f77b4; font-size: 16px;'>⏱️ Teaching Pace</h4>
-                            <div style='display: flex; align-items: center; margin-top: 10px;'>
-                                <span style='font-size: 20px; margin-right: 10px;'>{icon}</span>
-                                <span style='color: #666;'>{label} WPM</span>
-                            </div>
-                        </div>
-                    """.format(
-                        icon="✅" if pace_score == 1 else "❌",
-                        label=f"{words_per_minute:.1f}"
-                    ), unsafe_allow_html=True)
-                
-                # Second row of metrics
-                col4, col5, col6 = st.columns(3)
-                
-                # QnA Accuracy
-                with col4:
-                    st.markdown("""
-                        <div style='background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                            <h4 style='color: #1f77b4; font-size: 16px;'>❓ QnA Accuracy</h4>
-                            <div style='display: flex; align-items: center; margin-top: 10px;'>
-                                <span style='font-size: 20px; margin-right: 10px;'>{icon}</span>
-                                <span style='color: #666;'>{label}</span>
-                            </div>
-                        </div>
-                    """.format(
-                        icon="✅" if response_accuracy == 1 and response_completeness == 1 else "❌",
-                        label="Accurate & Complete" if response_accuracy == 1 and response_completeness == 1 else "Needs Improvement"
-                    ), unsafe_allow_html=True)
-                
-                # Accent Clarity
-                with col5:
-                    st.markdown("""
-                        <div style='background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                            <h4 style='color: #1f77b4; font-size: 16px;'>🗣️ Accent Clarity</h4>
-                            <div style='display: flex; align-items: center; margin-top: 10px;'>
-                                <span style='font-size: 20px; margin-right: 10px;'>{icon}</span>
-                                <span style='color: #666;'>{label}</span>
-                            </div>
-                        </div>
-                    """.format(
-                        icon="✅" if accent_confidence > 0.7 else "⚠️",
-                        label=f"{accent} ({accent_confidence*100:.1f}% confidence)"
-                    ), unsafe_allow_html=True)
-
-                # Engagement Score
-                with col6:
-                    engagement_score = concept_data.get("Engagement and Interaction", {}).get("Score", 0)
-                    st.markdown("""
-                        <div style='background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                            <h4 style='color: #1f77b4; font-size: 16px;'>👥 Engagement</h4>
-                            <div style='display: flex; align-items: center; margin-top: 10px;'>
-                                <span style='font-size: 20px; margin-right: 10px;'>{icon}</span>
-                                <span style='color: #666;'>{label}</span>
-                            </div>
-                        </div>
-                    """.format(
-                        icon="✅" if engagement_score == 1 else "❌",
-                        label="Good Engagement" if engagement_score == 1 else "Low Engagement"
-                    ), unsafe_allow_html=True)
-
-                # Add a new row for additional metrics
-                col7, col8, col9 = st.columns(3)
-
-                # Fluency Score
-                with col7:
-                    fluency_data = speech_metrics.get("fluency", {})
-                    fillers_per_min = float(fluency_data.get("fillersPerMin", 0))
-                    errors_per_min = float(fluency_data.get("errorsPerMin", 0))
-                    fluency_score = 1 if fillers_per_min <= 3 and errors_per_min <= 1 else 0
-                    st.markdown("""
-                        <div style='background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                            <h4 style='color: #1f77b4; font-size: 16px;'>🗣️ Fluency</h4>
-                            <div style='display: flex; align-items: center; margin-top: 10px;'>
-                                <span style='font-size: 20px; margin-right: 10px;'>{icon}</span>
-                                <span style='color: #666;'>{label}</span>
-                            </div>
-                            <div style='color: #666; font-size: 12px; margin-top: 5px;'>
-                                Fillers: {fillers:.1f}/min<br>
-                                Errors: {errors:.1f}/min
-                            </div>
-                        </div>
-                    """.format(
-                        icon="✅" if fluency_score == 1 else "❌",
-                        label="Good Flow" if fluency_score == 1 else "Needs Work",
-                        fillers=fillers_per_min,
-                        errors=errors_per_min
-                    ), unsafe_allow_html=True)
-
-                # Energy Level
-                with col8:
-                    energy_data = speech_metrics.get("energy", {})
-                    mean_amplitude = float(energy_data.get("meanAmplitude", 0))
-                    energy_score = 1 if 60 <= mean_amplitude <= 75 else 0
-                    st.markdown("""
-                        <div style='background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                            <h4 style='color: #1f77b4; font-size: 16px;'>⚡ Energy Level</h4>
-                            <div style='display: flex; align-items: center; margin-top: 10px;'>
-                                <span style='font-size: 20px; margin-right: 10px;'>{icon}</span>
-                                <span style='color: #666;'>{label}</span>
-                            </div>
-                            <div style='color: #666; font-size: 12px; margin-top: 5px;'>
-                                Amplitude: {amplitude:.1f}
-                            </div>
-                        </div>
-                    """.format(
-                        icon="✅" if energy_score == 1 else "❌",
-                        label="Good Energy" if energy_score == 1 else "Needs Adjustment",
-                        amplitude=mean_amplitude
-                    ), unsafe_allow_html=True)
-
-                # Intonation
-                with col9:
-                    intonation_data = speech_metrics.get("intonation", {})
-                    pitch_variation = float(intonation_data.get("pitchVariation", 0))
-                    pitch_mean = float(intonation_data.get("pitch", 0))
-                    variation_coeff = (pitch_variation / pitch_mean * 100) if pitch_mean > 0 else 0
-                    intonation_score = 1 if 20 <= variation_coeff <= 40 else 0
-                    st.markdown("""
-                        <div style='background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                            <h4 style='color: #1f77b4; font-size: 16px;'>🎵 Voice Variety</h4>
-                            <div style='display: flex; align-items: center; margin-top: 10px;'>
-                                <span style='font-size: 20px; margin-right: 10px;'>{icon}</span>
-                                <span style='color: #666;'>{label}</span>
-                            </div>
-                            <div style='color: #666; font-size: 12px; margin-top: 5px;'>
-                                Variation: {variation:.1f}%
-                            </div>
-                        </div>
-                    """.format(
-                        icon="✅" if intonation_score == 1 else "❌",
-                        label="Good Variety" if intonation_score == 1 else "Too Monotone",
-                        variation=variation_coeff
-                    ), unsafe_allow_html=True)
-
-                # After the metrics rows and before Detailed Summary, add Geography and Profile sections
-                st.markdown("""
-                    <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; margin-top: 20px;'>
-                        <h3 style='color: #1f77b4; margin-bottom: 15px;'>🌍 Market Fit & Teaching Style</h3>
-                    </div>
-                """, unsafe_allow_html=True)
-
-                # Create two columns for Geography and Profile
-                geo_col, profile_col = st.columns(2)
-
-                # Geography Fit
-                with geo_col:
-                    geography_fit = recommendations.get("geographyFit", "Not Available")
-                    accent_info = audio_features.get("accent_classification", {})
-                    accent = accent_info.get("accent", "Unknown")
-                    
-                    # Accent label mapping
-                    accent_labels = {
-                        "0": "American", "1": "British", "2": "Chinese", "3": "Japanese",
-                        "4": "Indian", "5": "Korean", "6": "Russian", "7": "Spanish",
-                        "8": "French", "9": "German", "10": "Italian", "11": "Dutch",
-                        "12": "Australian", "13": "Arabic", "14": "African", "15": "Other"
-                    }
-                    
-                    # Get proper accent label
-                    accent_display = accent.title() if not accent.isdigit() else accent_labels.get(accent, "Unknown")
-                    
-                    # Create accent information HTML
-                    accent_html = f"""
-                        <div style='margin-top: 15px; padding-top: 10px; border-top: 1px solid #eee;'>
-                            <h5 style='color: #1f77b4; font-size: 14px; margin-bottom: 8px;'>🗣️ Accent Analysis</h5>
-                            <p style='color: #333; margin-bottom: 5px;'>
-                                <strong>Primary Accent:</strong> {accent_display}
-                            </p>
-                        </div>
-                    """
-                    
-                    st.markdown(f"""
-                        <div style='background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                            <h4 style='color: #1f77b4; font-size: 16px;'>🌍 Geography Fit</h4>
-                            <p style='color: #333; margin-top: 10px;'>{geography_fit}</p>
-                            {accent_html}
-                        </div>
-                    """, unsafe_allow_html=True)
-
-                # Teaching Rigor and Profile Match
-                with profile_col:
-                    rigor = recommendations.get("rigor", "Not Available")
-                    st.markdown("""
-                        <div style='background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                            <h4 style='color: #1f77b4; font-size: 16px;'>📊 Teaching Style</h4>
-                            <p style='color: #333; margin-top: 10px;'>{rigor}</p>
-                        </div>
-                    """.format(rigor=rigor), unsafe_allow_html=True)
-
-                # Learner Profile Matches
-                st.markdown("""
-                    <div style='background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 20px;'>
-                        <h4 style='color: #1f77b4; margin-bottom: 15px;'>👥 Best Suited For</h4>
-                    </div>
-                """, unsafe_allow_html=True)
-
-                # Create columns for profile matches
-                profile_cols = st.columns(2)
-                
-                # Get profile matches
-                profile_matches = recommendations.get("profileMatches", [])
-                
-                # Split profiles between columns
-                for i, profile in enumerate(profile_matches):
-                    with profile_cols[i % 2]:
-                        profile_name = profile.get("profile", "").replace("_", " ").title()
-                        is_match = profile.get("match", False)
-                        reason = profile.get("reason", "No reason provided")
-                        
-                        st.markdown(f"""
-                            <div style='background-color: {'#f0f9ff' if is_match else '#ffffff'}; 
-                                      padding: 15px; 
-                                      border-radius: 8px; 
-                                      box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
-                                      margin-bottom: 10px;
-                                      border-left: 4px solid {'#1f77b4' if is_match else '#e0e0e0'}'>
-                                <div style='display: flex; align-items: center; margin-bottom: 8px;'>
-                                    <span style='font-size: 20px; margin-right: 10px;'>
-                                        {'✅' if is_match else '⚪'}
-                                    </span>
-                                    <span style='color: #1f77b4; font-weight: bold;'>{profile_name}</span>
-                                </div>
-                                <p style='color: #666; margin: 0; font-size: 14px;'>{reason}</p>
-                            </div>
-                        """, unsafe_allow_html=True)
-
-                # Add spacing before Detailed Summary
-                st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
-
-                # Detailed Summary
-                st.markdown("""
-                    <div style='background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 20px;'>
-                        <h4 style='color: #1f77b4; margin-bottom: 15px;'>Detailed Assessment</h4>
-                        <p style='color: #333; line-height: 1.6;'>{summary}</p>
-                    </div>
-                """.format(summary=summary), unsafe_allow_html=True)
-                
-                # Add specific recommendations if available
-                if "improvements" in recommendations:
-                    st.markdown("""
-                        <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; margin-top: 20px;'>
-                            <h3 style='color: #1f77b4; margin-bottom: 15px;'>🎯 Specific Recommendations</h3>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    
-                    for improvement in recommendations["improvements"]:
-                        if isinstance(improvement, dict):
-                            category = improvement.get("category", "General")
-                            message = improvement.get("message", "")
-                            st.markdown(f"""
-                                <div style='background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 10px;'>
-                                    <span style='color: #1f77b4; font-weight: bold;'>{category}</span>
-                                    <p style='color: #333; margin-top: 5px;'>{message}</p>
-                                </div>
-                            """, unsafe_allow_html=True)
-
-                # Add spacing before Nervousness Analysis
-                st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
-
-                # Nervousness Analysis Section
-                st.markdown("""
-                    <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; margin-top: 20px;'>
-                        <h3 style='color: #1f77b4; margin-bottom: 15px;'>🎯 Confidence Assessment</h3>
-                    </div>
-                """, unsafe_allow_html=True)
-
-                # Create columns for nervousness metrics
-                nerv_col1, nerv_col2 = st.columns(2)
-
-                with nerv_col1:
-                    # Calculate nervousness indicators
-                    fluency_data = speech_metrics.get("fluency", {})
-                    fillers_per_min = float(fluency_data.get("fillersPerMin", 0))
-                    errors_per_min = float(fluency_data.get("errorsPerMin", 0))
-                    
-                    # Speech pattern analysis
-                    intonation_data = speech_metrics.get("intonation", {})
-                    pitch_variation = float(intonation_data.get("pitchVariation", 0))
-                    pitch_mean = float(intonation_data.get("pitch", 0))
-                    
-                    # Confidence indicators
-                    filler_confidence = "High" if fillers_per_min <= 2 else "Medium" if fillers_per_min <= 4 else "Low"
-                    error_confidence = "High" if errors_per_min <= 0.5 else "Medium" if errors_per_min <= 1 else "Low"
-                    pitch_confidence = "High" if 20 <= (pitch_variation/pitch_mean * 100) <= 40 else "Low"
-
-                    st.markdown("""
-                        <div style='background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                            <h4 style='color: #1f77b4; font-size: 16px;'>Speech Confidence Indicators</h4>
-                            <div style='margin-top: 15px;'>
-                                <div style='display: flex; justify-content: space-between; margin-bottom: 10px;'>
-                                    <span style='color: #666;'>Filler Words:</span>
-                                    <span style='color: {color1};'>{filler_conf}</span>
-                                </div>
-                                <div style='display: flex; justify-content: space-between; margin-bottom: 10px;'>
-                                    <span style='color: #666;'>Speech Errors:</span>
-                                    <span style='color: {color2};'>{error_conf}</span>
-                                </div>
-                                <div style='display: flex; justify-content: space-between;'>
-                                    <span style='color: #666;'>Voice Control:</span>
-                                    <span style='color: {color3};'>{pitch_conf}</span>
-                                </div>
-                            </div>
-                        </div>
-                    """.format(
-                        color1='#2ecc71' if filler_confidence == "High" else '#f1c40f' if filler_confidence == "Medium" else '#e74c3c',
-                        color2='#2ecc71' if error_confidence == "High" else '#f1c40f' if error_confidence == "Medium" else '#e74c3c',
-                        color3='#2ecc71' if pitch_confidence == "High" else '#e74c3c',
-                        filler_conf=filler_confidence,
-                        error_conf=error_confidence,
-                        pitch_conf=pitch_confidence
-                    ), unsafe_allow_html=True)
-
-                with nerv_col2:
-                    # Overall confidence assessment
-                    confidence_score = sum([
-                        1 if filler_confidence == "High" else 0.5 if filler_confidence == "Medium" else 0,
-                        1 if error_confidence == "High" else 0.5 if error_confidence == "Medium" else 0,
-                        1 if pitch_confidence == "High" else 0
-                    ]) / 3 * 100
-
-                    st.markdown("""
-                        <div style='background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                            <h4 style='color: #1f77b4; font-size: 16px;'>Overall Confidence Score</h4>
-                            <div style='text-align: center; margin-top: 15px;'>
-                                <div style='font-size: 36px; color: {color}; font-weight: bold;'>{score}%</div>
-                                <div style='color: #666; margin-top: 10px;'>{assessment}</div>
-                            </div>
-                        </div>
-                    """.format(
-                        color='#2ecc71' if confidence_score >= 80 else '#f1c40f' if confidence_score >= 60 else '#e74c3c',
-                        score=round(confidence_score),
-                        assessment="Very Confident" if confidence_score >= 80 else "Moderately Confident" if confidence_score >= 60 else "Shows Nervousness"
-                    ), unsafe_allow_html=True)
-
-                # Detailed Justification Section
-                st.markdown("""
-                    <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; margin-top: 20px;'>
-                        <h3 style='color: #1f77b4; margin-bottom: 15px;'>📋 Detailed Justification</h3>
-                    </div>
-                """, unsafe_allow_html=True)
-
-                # Get hiring recommendation data
-                hiring_rec = recommendations.get("hiringRecommendation", {})
-                score = hiring_rec.get("score", 0)
-                reasons = hiring_rec.get("reasons", [])
-                strengths = hiring_rec.get("strengths", [])
-                concerns = hiring_rec.get("concerns", [])
-
-                # Create columns for strengths and concerns
-                just_col1, just_col2 = st.columns(2)
-
-                with just_col1:
-                    st.markdown("""
-                        <div style='background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                            <h4 style='color: #2ecc71; font-size: 16px;'>✨ Key Strengths</h4>
-                            <ul style='list-style-type: none; padding-left: 0; margin-top: 15px;'>
-                                {strengths_list}
-                            </ul>
-                        </div>
-                    """.format(
-                        strengths_list="\n".join([f"<li style='color: #333; margin-bottom: 8px;'>• {s}</li>" for s in strengths])
-                    ), unsafe_allow_html=True)
-
-                with just_col2:
-                    st.markdown("""
-                        <div style='background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                            <h4 style='color: #e74c3c; font-size: 16px;'>🎯 Areas for Growth</h4>
-                            <ul style='list-style-type: none; padding-left: 0; margin-top: 15px;'>
-                                {concerns_list}
-                            </ul>
-                        </div>
-                    """.format(
-                        concerns_list="\n".join([f"<li style='color: #333; margin-bottom: 8px;'>• {c}</li>" for c in concerns])
-                    ), unsafe_allow_html=True)
-
-        with tabs[3]:
-            st.header("Transcript with Timestamps")
-            
-            # Add a search box for the transcript
-            search_term = st.text_input("Search in transcript", "")
-            
-            transcript = evaluation.get("transcript", "")
-            sentences = re.split(r'(?<=[.!?])\s+', transcript)
-            
-            # Create a container for the transcript
-            with st.container():
-                for i, sentence in enumerate(sentences):
-                    words_before = len(' '.join(sentences[:i]).split())
-                    timestamp = words_before / 150
-                    minutes = int(timestamp)
-                    seconds = int((timestamp - minutes) * 60)
-                    
-                    # Highlight search term if present
-                    if search_term and search_term.lower() in sentence.lower():
-                        sentence = sentence.replace(
-                            search_term,
-                            f"<mark>{search_term}</mark>",
-                            flags=re.IGNORECASE
-                        )
-                    
-                    st.markdown(f"""
-                    <div class="transcript-line">
-                        <span class="timestamp">[{minutes:02d}:{seconds:02d}]</span>
-                        <span class="sentence">{sentence}</span>
-                    </div>
-                    """, unsafe_allow_html=True)
+        # Continue with the rest of the evaluation display...
 
     except Exception as e:
         logger.error(f"Error displaying evaluation: {e}")
@@ -3201,7 +2341,6 @@ def display_evaluation(evaluation: Dict[str, Any]):
     """, unsafe_allow_html=True)
 
 def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
-    """Generate a more visually appealing and comprehensive PDF report."""
     try:
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter,
@@ -3209,668 +2348,213 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
                                 topMargin=72, bottomMargin=72)
         styles = getSampleStyleSheet()
 
-        # Extract all necessary data first
-        teaching_data = evaluation_data.get("teaching", {})
-        speech_metrics = evaluation_data.get("speech_metrics", {})
-        audio_features = evaluation_data.get("audio_features", {})
-        recommendations = evaluation_data.get("recommendations", {})
+        # Calculate teaching score and quality assessment
+        teaching_score = calculate_teaching_score(evaluation_data)
+        quality_assessment = assess_teaching_quality(evaluation_data)
 
-        # Content Assessment data
-        concept_data = teaching_data.get("Concept Assessment", {})
-        content_accuracy = concept_data.get("Subject Matter Accuracy", {})
-        content_score = content_accuracy.get("Score", 0)
-
-        # Industry Examples data
-        examples = concept_data.get("Examples and Business Context", {})
-        examples_score = examples.get("Score", 0)
-
-        # Pace Assessment data
-        speed_data = speech_metrics.get("speed", {})
-        words_per_minute = speed_data.get("wpm", 0)
-        pace_score = 1 if 120 <= words_per_minute <= 160 else 0
-
-        # QnA Assessment data
-        qna_data = concept_data.get("Question Handling", {})
-        qna_details = qna_data.get("Details", {})
-        response_accuracy = qna_details.get("ResponseAccuracy", {}).get("Score", 0)
-        response_completeness = qna_details.get("ResponseCompleteness", {}).get("Score", 0)
-
-        # Accent Assessment data
-        accent_info = audio_features.get("accent_classification", {})
-        accent = accent_info.get("accent", "Unknown")
-        accent_confidence = accent_info.get("confidence", 0)
-
-        # Fluency data
-        fluency_data = speech_metrics.get("fluency", {})
-        fillers_per_min = float(fluency_data.get("fillersPerMin", 0))
-        errors_per_min = float(fluency_data.get("errorsPerMin", 0))
-
-        # Intonation data
-        intonation_data = speech_metrics.get("intonation", {})
-        pitch_variation = float(intonation_data.get("pitchVariation", 0))
-        pitch_mean = float(intonation_data.get("pitch", 0))
-
-        # Energy data
-        energy_data = speech_metrics.get("energy", {})
-        mean_amplitude = float(energy_data.get("meanAmplitude", 0))
-
-        # Define styles
+        # Create custom styles with improved formatting
         title_style = ParagraphStyle(
-            'ReportTitle',
-            parent=styles['h1'],
-            fontSize=22,
+            'Title',
+            parent=styles['Title'],
+            fontSize=24,
+            spaceAfter=30,
             alignment=TA_CENTER,
-            spaceAfter=20,
             textColor=colors.HexColor('#2c3e50')
         )
         heading1_style = ParagraphStyle(
-            'SectionHeading',
-            parent=styles['h2'],
-            fontSize=16,
-            spaceAfter=10,
-            spaceBefore=12,
-            textColor=colors.HexColor('#1f77b4'),
-            borderPadding=5,
+            'CustomHeading1',
+            parent=styles['Heading1'],
+            fontSize=20,
+            spaceAfter=20,
+            spaceBefore=20,
+            textColor=colors.HexColor('#2c3e50')
         )
         heading2_style = ParagraphStyle(
-            'SubHeading',
-            parent=styles['h3'],
-            fontSize=13,
-            spaceAfter=8,
-            spaceBefore=8,
+            'CustomHeading2',
+            parent=styles['Heading2'],
+            fontSize=16,
+            spaceAfter=15,
+            spaceBefore=15,
             textColor=colors.HexColor('#34495e')
         )
         body_style = ParagraphStyle(
-            'BodyText',
+            'CustomBody',
             parent=styles['Normal'],
-            fontSize=10,
-            leading=14,
-            alignment=TA_LEFT
-        )
-        citation_style = ParagraphStyle(
-            'CitationText',
-            parent=styles['Normal'],
-            fontSize=9,
-            leading=12,
-            textColor=colors.dimgray,
-            leftIndent=15
-        )
-        table_header_style = ParagraphStyle(
-            'TableHeader',
-            parent=styles['Normal'],
-            fontSize=10,
-            textColor=colors.whitesmoke,
-            alignment=TA_CENTER,
-            fontName='Helvetica-Bold'
-        )
-        table_body_style = ParagraphStyle(
-            'TableBody',
-            parent=styles['Normal'],
-            fontSize=9,
-            alignment=TA_LEFT
-        )
-        table_body_centered_style = ParagraphStyle(
-            'TableBodyCentered',
-            parent=table_body_style,
-            alignment=TA_CENTER
-        )
-        score_pass_style = ParagraphStyle(
-             'ScorePass', parent=table_body_centered_style, textColor=colors.darkgreen, fontName='Helvetica-Bold'
-        )
-        score_fail_style = ParagraphStyle(
-             'ScoreFail', parent=table_body_centered_style, textColor=colors.red, fontName='Helvetica-Bold'
+            fontSize=12,
+            spaceAfter=10,
+            leading=14
         )
         score_style = ParagraphStyle(
             'Score',
-            parent=styles['h1'],
-            fontSize=24,
+            parent=styles['Normal'],
+            fontSize=18,
+            spaceAfter=15,
             alignment=TA_CENTER,
-            spaceAfter=10,
-            spaceBefore=10,
             fontName='Helvetica-Bold'
         )
-
-        # --- Helper Functions for PDF Generation ---
-        def create_metric_table(title: str, data: Dict[str, Any], metric_keys: list, value_format: str = "{:.2f}"):
-            """Creates a styled table for simple key-value metrics."""
-            if not data:
-                return [Paragraph(f"{title}: Data not available", body_style)]
-
-            table_data = [[Paragraph(title, heading2_style), None]] # Span title across columns
-            table_data.append([Paragraph('Metric', table_header_style), Paragraph('Value', table_header_style)])
-
-            for key in metric_keys:
-                raw_value = data.get(key, 'N/A')
-                value_str = 'N/A'
-                if isinstance(raw_value, (int, float)):
-                    try:
-                        value_str = value_format.format(raw_value)
-                    except (ValueError, TypeError):
-                        value_str = str(raw_value) # Fallback
-                elif raw_value is not None:
-                    value_str = str(raw_value)
-
-                metric_name = key.replace('_', ' ').replace('PerMin', '/Min').title()
-                table_data.append([
-                    Paragraph(metric_name, table_body_style),
-                    Paragraph(value_str, table_body_centered_style)
-                ])
-
-            if len(table_data) <= 2: # Only title and header rows
-                 return [Paragraph(f"{title}: No relevant data found", body_style)]
-
-            table = Table(table_data, colWidths=[200, 100])
-            style = TableStyle([
-                ('SPAN', (0, 0), (1, 0)),  # Span title
-                ('BACKGROUND', (0, 1), (1, 1), colors.HexColor('#4a69bd')),  # Header background
-                ('TEXTCOLOR', (0, 1), (1, 1), colors.whitesmoke),
-                ('ALIGN', (0, 1), (1, 1), 'CENTER'),
-                ('FONTNAME', (0, 1), (1, 1), 'Helvetica-Bold'),
-                ('BOTTOMPADDING', (0, 1), (1, 1), 8),
-                ('GRID', (0, 1), (-1, -1), 0.5, colors.grey),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ('ROWBACKGROUNDS', (0, 2), (-1, -1), [colors.whitesmoke, colors.white])
-            ])
-            table.setStyle(style)
-            return [table, Spacer(1, 15)]
-
-        def create_analysis_table(title: str, data: Dict[str, Any]):
-            """Creates a styled table for analysis categories with scores and citations."""
-            if not data:
-                 return [Paragraph(f"{title}: Data not available", body_style)]
-
-            elements = [Paragraph(title, heading2_style)]
-            for category, details in data.items():
-                if not isinstance(details, dict): continue # Skip if data is not a dictionary
-
-                score = details.get("Score", None)
-                citations = details.get("Citations", [])
-
-                score_text = "N/A"
-                score_style = table_body_centered_style
-                if score == 1:
-                    score_text = "Pass"
-                    score_style = score_pass_style
-                elif score == 0:
-                    score_text = "Needs Work"
-                    score_style = score_fail_style
-
-                # Table for category score
-                cat_table_data = [
-                    [Paragraph(category.replace('_', ' ').title(), table_header_style), Paragraph('Score', table_header_style)],
-                    [Paragraph(category.replace('_', ' ').title(), table_body_style), Paragraph(score_text, score_style)]
-                 ]
-                cat_table = Table(cat_table_data, colWidths=[300, 100])
-                cat_table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4a69bd')),
-                    ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                    ('BACKGROUND', (0, 1), (-1, -1), colors.white) # Body background
-                ]))
-                elements.append(cat_table)
-
-                # Add citations if present
-                if citations:
-                    elements.append(Paragraph("Supporting Evidence:", citation_style))
-                    for citation in citations:
-                        elements.append(Paragraph(f"• {citation}", citation_style))
-
-                # Handle nested 'Details' structure for Question Handling
-                if "Details" in details and isinstance(details["Details"], dict):
-                    elements.append(Paragraph("Detailed Assessment:", heading2_style))
-                    nested_elements = create_analysis_table("", details["Details"]) # Recursive call for details
-                    elements.extend(nested_elements) # Add nested elements
-
-                elements.append(Spacer(1, 10))
-
-            return elements
-
-        def create_recommendation_section(title: str, content: Any):
-            """Creates a section for recommendations or summary."""
-            elements = [Paragraph(title, heading2_style)]
-            if isinstance(content, list):
-                for item in content:
-                    if isinstance(item, dict):
-                         # Handle new categorized format
-                         category = item.get("category", "General")
-                         message = item.get("message", str(item))
-                         elements.append(Paragraph(f"• <b>[{category}]</b> {message}", body_style))
-                    else:
-                         # Handle old string format
-                         elements.append(Paragraph(f"• {item}", body_style)) # Simple bullet point
-            elif isinstance(content, str):
-                elements.append(Paragraph(content, body_style))
-            else:
-                 elements.append(Paragraph("N/A", body_style))
-            elements.append(Spacer(1, 15))
-            return elements
-
-        # --- Build PDF Story ---
-        story = []
-        story.append(Paragraph("Mentor Demo Review System", title_style))
-        story.append(Spacer(1, 20))
-
-        # --- Recommendations & Summary ---
-        story.append(Paragraph("Recommendations & Summary", heading1_style))
-        recommendations = evaluation_data.get("recommendations", {})
-
-        # Hiring Recommendation
-        hiring_rec = recommendations.get("hiringRecommendation", {})
-        if hiring_rec:
-            score = hiring_rec.get("score", 0)
-            reasons = hiring_rec.get("reasons", [])
-            strengths = hiring_rec.get("strengths", [])
-            concerns = hiring_rec.get("concerns", [])
-            
-            # Display score
-            score_color = colors.darkgreen if score >= 7 else colors.orange if score >= 5 else colors.red
-            score_style = ParagraphStyle(
-                'HiringScore',
-                parent=score_style,
-                textColor=score_color
-            )
-            story.append(Paragraph(f"Overall Assessment Score: {score}/10", score_style))
-            story.append(Spacer(1, 10))
-            
-            # Display key reasons
-            story.append(Paragraph("Key Reasons:", heading2_style))
-            for reason in reasons:
-                story.append(Paragraph(f"• {reason}", body_style))
-            story.append(Spacer(1, 15))
-            
-            # Display strengths and concerns in two columns
-            strengths_data = [[Paragraph("Key Strengths", heading2_style)]]
-            for strength in strengths:
-                strengths_data.append([Paragraph(f"• {strength}", body_style)])
-            
-            concerns_data = [[Paragraph("Areas for Growth", heading2_style)]]
-            for concern in concerns:
-                concerns_data.append([Paragraph(f"• {concern}", body_style)])
-            
-            # Create tables for strengths and concerns
-            t_strengths = Table(strengths_data, colWidths=[250])
-            t_concerns = Table(concerns_data, colWidths=[250])
-            
-            # Create a table to hold both columns
-            combined_data = [[t_strengths, t_concerns]]
-            t_combined = Table(combined_data, colWidths=[250, 250], spaceBefore=10, spaceAfter=10)
-            story.append(t_combined)
-
-        # Summary
-        summary = recommendations.get("summary", "N/A")
-        story.extend(create_recommendation_section("Overall Summary", summary))
-
-        # Geography Fit and Teaching Style
-        story.append(Paragraph("Market Fit & Teaching Style", heading1_style))
-        
-        # Create two-column layout for Geography and Teaching Style
-        geography_fit = recommendations.get("geographyFit", "Not Available")
-        rigor = recommendations.get("rigor", "Not Available")
-        
-        # Add accent information to geography fit
-        accent_info = audio_features.get("accent_classification", {})
-        accent = accent_info.get("accent", "Unknown")
-        
-        # Accent label mapping (same as above)
-        accent_labels = {
-            "0": "American", "1": "British", "2": "Chinese", "3": "Japanese",
-            "4": "Indian", "5": "Korean", "6": "Russian", "7": "Spanish",
-            "8": "French", "9": "German", "10": "Italian", "11": "Dutch",
-            "12": "Australian", "13": "Arabic", "14": "African", "15": "Other"
-        }
-        
-        # Get proper accent label
-        accent_display = accent.title() if not accent.isdigit() else accent_labels.get(accent, "Unknown")
-        
-        # Create accent information text
-        accent_text = f"Primary Accent: {accent_display}"
-        
-        # Combine geography fit with accent information
-        geography_text = f"{geography_fit}\n\n{accent_text}"
-        
-        geo_teach_data = [
-            [Paragraph("Geography Fit & Accent Analysis", heading2_style), Paragraph("Teaching Style", heading2_style)],
-            [Paragraph(geography_text, body_style), Paragraph(rigor, body_style)]
-        ]
-        
-        t_geo_teach = Table(geo_teach_data, colWidths=[250, 250], spaceBefore=10, spaceAfter=10)
-        t_geo_teach.setStyle(TableStyle([
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ]))
-        story.append(t_geo_teach)
-        story.append(Spacer(1, 20))
-
-        # --- Key Metrics Overview ---
-        story.append(Paragraph("Key Teaching Metrics", heading1_style))
-        
-        # Create metrics table
-        metrics_data = [
-            ['Metric', 'Status', 'Details'],
-            ['Content Accuracy', 
-             '✓' if content_score == 1 else '✗',
-             'Accurate' if content_score == 1 else 'Needs Review'],
-            ['Industry Examples',
-             '✓' if examples_score == 1 else '✗',
-             'Well Used' if examples_score == 1 else 'Could Improve'],
-            ['Teaching Pace',
-             '✓' if pace_score == 1 else '✗',
-             f'{words_per_minute:.1f} WPM'],
-            ['QnA Accuracy',
-             '✓' if response_accuracy == 1 and response_completeness == 1 else '✗',
-             'Accurate & Complete' if response_accuracy == 1 and response_completeness == 1 else 'Needs Improvement'],
-            ['Accent Clarity',
-             '✓' if accent_confidence > 0.7 else '!',
-             f'{accent} ({accent_confidence*100:.1f}% confidence)']
-        ]
-        
-        t = Table(metrics_data, colWidths=[200, 50, 200])
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
-            ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-            ('ALIGN', (0, 1), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 10),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black)
-        ]))
-        story.append(t)
-        story.append(Spacer(1, 20))
-
-        # --- Confidence Assessment ---
-        story.append(Paragraph("Confidence Assessment", heading1_style))
-        
-        # Calculate confidence metrics
-        fluency_data = speech_metrics.get("fluency", {})
-        fillers_per_min = float(fluency_data.get("fillersPerMin", 0))
-        errors_per_min = float(fluency_data.get("errorsPerMin", 0))
-        
-        intonation_data = speech_metrics.get("intonation", {})
-        pitch_variation = float(intonation_data.get("pitchVariation", 0))
-        pitch_mean = float(intonation_data.get("pitch", 0))
-        
-        filler_confidence = "High" if fillers_per_min <= 2 else "Medium" if fillers_per_min <= 4 else "Low"
-        error_confidence = "High" if errors_per_min <= 0.5 else "Medium" if errors_per_min <= 1 else "Low"
-        pitch_confidence = "High" if 20 <= (pitch_variation/pitch_mean * 100) <= 40 else "Low"
-        
-        confidence_score = sum([
-            1 if filler_confidence == "High" else 0.5 if filler_confidence == "Medium" else 0,
-            1 if error_confidence == "High" else 0.5 if error_confidence == "Medium" else 0,
-            1 if pitch_confidence == "High" else 0
-        ]) / 3 * 100
-        
-        # Create confidence indicators table
-        confidence_data = [
-            ['Confidence Indicator', 'Level', 'Assessment'],
-            ['Filler Words', filler_confidence, f'{fillers_per_min:.1f} per minute'],
-            ['Speech Errors', error_confidence, f'{errors_per_min:.1f} per minute'],
-            ['Voice Control', pitch_confidence, f'{pitch_variation/pitch_mean * 100 if pitch_mean > 0 else 0:.1f}% variation']
-        ]
-        
-        t = Table(confidence_data, colWidths=[150, 100, 200])
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
-            ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black)
-        ]))
-        story.append(t)
-        
-        # Overall Confidence Score
-        story.append(Spacer(1, 15))
-        confidence_text = f"Overall Confidence Score: {round(confidence_score)}%"
-        confidence_assessment = "Very Confident" if confidence_score >= 80 else "Moderately Confident" if confidence_score >= 60 else "Shows Nervousness"
-        story.append(Paragraph(confidence_text, heading2_style))
-        story.append(Paragraph(confidence_assessment, body_style))
-        story.append(Spacer(1, 20))
-
-        # --- Recommendations & Summary ---
-        story.append(Paragraph("Recommendations & Summary", heading1_style))
-        recommendations = evaluation_data.get("recommendations", {})
-
-        # Summary
-        summary = recommendations.get("summary", "N/A")
-        story.extend(create_recommendation_section("Overall Summary", summary))
-
-        # Hiring Recommendation
-        hiring_rec = recommendations.get("hiringRecommendation", {})
-        if hiring_rec:
-            score = hiring_rec.get("score", 0)
-            reasons = hiring_rec.get("reasons", [])
-            strengths = hiring_rec.get("strengths", [])
-            concerns = hiring_rec.get("concerns", [])
-            
-            # Display score
-            score_color = colors.darkgreen if score >= 7 else colors.orange if score >= 5 else colors.red
-            score_style = ParagraphStyle(
-                'HiringScore',
-                parent=score_style,
-                textColor=score_color
-            )
-            story.append(Paragraph(f"Hiring Score: {score}/10", score_style))
-            story.append(Spacer(1, 10))
-            
-            # Display strengths and concerns in two columns
-            strengths_data = [[Paragraph("Key Strengths", heading2_style)]]
-            for strength in strengths:
-                strengths_data.append([Paragraph(f"• {strength}", body_style)])
-            
-            concerns_data = [[Paragraph("Areas for Growth", heading2_style)]]
-            for concern in concerns:
-                concerns_data.append([Paragraph(f"• {concern}", body_style)])
-            
-            # Create tables for strengths and concerns
-            t_strengths = Table(strengths_data, colWidths=[250])
-            t_concerns = Table(concerns_data, colWidths=[250])
-            
-            # Create a table to hold both columns
-            combined_data = [[t_strengths, t_concerns]]
-            t_combined = Table(combined_data, colWidths=[250, 250], spaceBefore=10, spaceAfter=10)
-            story.append(t_combined)
-            
-            # Display reasons
-            if reasons:
-                story.append(Paragraph("Key Reasons:", heading2_style))
-                for reason in reasons:
-                    story.append(Paragraph(f"• {reason}", body_style))
-                story.append(Spacer(1, 10))
-
-        # Geography Fit and Teaching Style
-        story.append(Paragraph("Market Fit & Teaching Style", heading1_style))
-        
-        # Create two-column layout for Geography and Teaching Style
-        geography_fit = recommendations.get("geographyFit", "Not Available")
-        rigor = recommendations.get("rigor", "Not Available")
-        
-        geo_teach_data = [
-            [Paragraph("Geography Fit", heading2_style), Paragraph("Teaching Style", heading2_style)],
-            [Paragraph(geography_fit, body_style), Paragraph(rigor, body_style)]
-        ]
-        
-        t_geo_teach = Table(geo_teach_data, colWidths=[250, 250], spaceBefore=10, spaceAfter=10)
-        t_geo_teach.setStyle(TableStyle([
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ]))
-        story.append(t_geo_teach)
-        
-        # Learner Profile Matches
-        story.append(Paragraph("Learner Profile Matches", heading1_style))
-        profile_matches = recommendations.get("profileMatches", [])
-        
-        for profile in profile_matches:
-            profile_name = profile.get("profile", "").replace("_", " ").title()
-            is_match = profile.get("match", False)
-            reason = profile.get("reason", "No reason provided")
-            
-            match_text = f"{'✓' if is_match else '✗'} {profile_name}"
-            story.append(Paragraph(match_text, heading2_style))
-            story.append(Paragraph(reason, body_style))
-            story.append(Spacer(1, 10))
-
-        # Continue with existing sections...
-        # --- Communication Metrics ---
-        story.append(Paragraph("Communication Metrics", heading1_style))
-        speech_metrics = evaluation_data.get("speech_metrics", {})
-
-        # Calculate acceptance status for each metric
-        speed_data = speech_metrics.get("speed", {})
-        fluency_data = speech_metrics.get("fluency", {})
-        intonation_data = speech_metrics.get("intonation", {})
-
-        # Get key metrics
-        words_per_minute = float(speed_data.get("wpm", 0))
-        fillers_per_min = float(fluency_data.get("fillersPerMin", 0))
-        errors_per_min = float(fluency_data.get("errorsPerMin", 0))
-        pitch_variation = float(intonation_data.get("pitchVariation", 0))
-
-        # Define acceptance criteria for each metric
-        speed_accepted = 120 <= words_per_minute <= 160
-        fillers_accepted = fillers_per_min <= 3
-        errors_accepted = errors_per_min <= 1
-        pitch_accepted = pitch_variation >= 20
-
-        # Create a table for metric acceptance status
-        acceptance_data = [
-            ['Metric', 'Status', 'Value', 'Target Range'],
-            ['Speaking Pace', 
-             '✓' if speed_accepted else '✗',
-             f'{words_per_minute:.1f} WPM',
-             '120-160 WPM'],
-            ['Filler Words',
-             '✓' if fillers_accepted else '✗',
-             f'{fillers_per_min:.1f} per min',
-             '≤ 3 per min'],
-            ['Speech Errors',
-             '✓' if errors_accepted else '✗',
-             f'{errors_per_min:.1f} per min',
-             '≤ 1 per min'],
-            ['Pitch Variation',
-             '✓' if pitch_accepted else '✗',
-             f'{pitch_variation:.1f}%',
-             '≥ 20%']
-        ]
-
-        # Create and style the acceptance table
-        t = Table(acceptance_data, colWidths=[150, 50, 100, 150])
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
-            ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black)
-        ]))
-        story.append(t)
-        story.append(Spacer(1, 15))
-
-        # Overall acceptance status
-        overall_accepted = all([speed_accepted, fillers_accepted, errors_accepted, pitch_accepted])
-        acceptance_status = "Accepted" if overall_accepted else "Not Accepted"
-        acceptance_color = colors.darkgreen if overall_accepted else colors.red
-
-        acceptance_style = ParagraphStyle(
-            'AcceptanceStatus',
-            parent=heading2_style,
-            textColor=acceptance_color,
-            fontSize=14,
-            alignment=TA_CENTER
+        bullet_style = ParagraphStyle(
+            'Bullet',
+            parent=body_style,
+            leftIndent=20,
+            firstLineIndent=-10,
+            spaceBefore=5,
+            spaceAfter=5
         )
-        story.append(Paragraph(f"Overall Status: {acceptance_status}", acceptance_style))
-        story.append(Spacer(1, 15))
 
-        # Continue with detailed metrics...
-        story.extend(create_metric_table(
-            "Speed Details", speed_data, ['wpm', 'total_words', 'duration_minutes']
-        ))
+        story = []
         
-        story.extend(create_metric_table(
-             "Fluency Details", fluency_data, ['errorsPerMin', 'fillersPerMin']
-        ))
+        # Title and Generation Date
+        story.append(Paragraph("Teaching Evaluation Report", title_style))
+        story.append(Paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M')}", 
+                             ParagraphStyle('Date', parent=body_style, alignment=TA_CENTER)))
+        story.append(Spacer(1, 30))
+
+        # Overall Score Section with improved formatting
+        score_color = colors.darkgreen if teaching_score >= 8 else colors.orange if teaching_score >= 6 else colors.red
+        overall_score_style = ParagraphStyle(
+            'OverallScore',
+            parent=score_style,
+            textColor=score_color
+        )
         
-        # Add detected fillers/errors details
-        if fluency_data:
-            fillers = fluency_data.get("detectedFillers", [])
-            errors = fluency_data.get("detectedErrors", [])
-            if fillers:
-                story.append(Paragraph("Detected Fillers:", heading2_style))
-                for f in fillers:
-                    story.append(Paragraph(f"• {f.get('word', 'N/A')}: {f.get('count', 'N/A')}", body_style))
-                story.append(Spacer(1, 5))
-            if errors:
-                story.append(Paragraph("Detected Errors:", heading2_style))
-                for e in errors:
-                    story.append(Paragraph(
-                        f"• {e.get('type', 'N/A')} (Count: {e.get('count', 'N/A')}): {e.get('context', '')}",
-                        body_style
-                    ))
-                story.append(Spacer(1, 10))
+        # Create a table for the score section
+        score_data = [
+            [Paragraph("Overall Score", heading2_style), 
+             Paragraph(f"{teaching_score:.1f}/10", overall_score_style)],
+            [Paragraph("Teaching Quality", heading2_style),
+             Paragraph(quality_assessment['overall_quality'].title(), body_style)]
+        ]
+        
+        score_table = Table(score_data, colWidths=[200, 200])
+        score_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f8f9fa')),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#2c3e50')),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (0, -1), 14),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+            ('TOPPADDING', (0, 0), (-1, -1), 12),
+        ]))
+        
+        story.append(score_table)
+        story.append(Spacer(1, 30))
 
-        # Flow
-        flow_data = speech_metrics.get("flow", {})
-        story.extend(create_metric_table("Flow", flow_data, ['pausesPerMin']))
+        # Key Assessment Points Section
+        story.append(Paragraph("Key Assessment Points", heading1_style))
+        
+        # Strengths Section
+        if quality_assessment['strengths']:
+            story.append(Paragraph("Key Strengths", heading2_style))
+            for strength in quality_assessment['strengths']:
+                story.append(Paragraph(f"• {strength}", bullet_style))
+            story.append(Spacer(1, 15))
+        else:
+            story.append(Paragraph("No significant strengths identified", body_style))
+            story.append(Spacer(1, 15))
+        
+        # Concerns Section
+        if quality_assessment['concerns']:
+            story.append(Paragraph("Areas for Growth", heading2_style))
+            for concern in quality_assessment['concerns']:
+                story.append(Paragraph(f"• {concern}", bullet_style))
+            story.append(Spacer(1, 15))
+        else:
+            story.append(Paragraph("No major concerns identified", body_style))
+            story.append(Spacer(1, 15))
+        
+        # Reasons Section
+        if quality_assessment['reasons']:
+            story.append(Paragraph("Key Reasons", heading2_style))
+            for reason in quality_assessment['reasons']:
+                story.append(Paragraph(f"• {reason}", bullet_style))
+            story.append(Spacer(1, 15))
+        else:
+            story.append(Paragraph("No specific reasons provided", body_style))
+            story.append(Spacer(1, 15))
 
-        # Intonation & Energy
-        audio_features = evaluation_data.get("audio_features", {})
-        intonation_data = speech_metrics.get("intonation", {})
-        energy_data = speech_metrics.get("energy", {})
+        # Add detailed metrics section
+        story.append(Paragraph("Detailed Metrics", heading1_style))
+        
+        # Communication Metrics
+        speech_metrics = evaluation_data.get('speech_metrics', {})
+        if speech_metrics:
+            story.append(Paragraph("Communication Metrics", heading2_style))
+            metrics_data = [
+                ["Metric", "Value", "Status"],
+                ["Speaking Pace", f"{speech_metrics.get('speed', {}).get('wpm', 'N/A')} WPM", 
+                 "✓" if 120 <= float(speech_metrics.get('speed', {}).get('wpm', 0)) <= 160 else "✗"],
+                ["Filler Words", f"{speech_metrics.get('fluency', {}).get('fillersPerMin', 'N/A')}/min",
+                 "✓" if float(speech_metrics.get('fluency', {}).get('fillersPerMin', 0)) <= 3 else "✗"],
+                ["Speech Errors", f"{speech_metrics.get('fluency', {}).get('errorsPerMin', 'N/A')}/min",
+                 "✓" if float(speech_metrics.get('fluency', {}).get('errorsPerMin', 0)) <= 1 else "✗"]
+            ]
+            metrics_table = Table(metrics_data, colWidths=[200, 150, 100])
+            metrics_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ]))
+            story.append(metrics_table)
+            story.append(Spacer(1, 20))
 
-        # Intonation Table
-        intonation_display_data = {
-            "Monotone Score": audio_features.get("monotone_score"),
-            "Pitch Mean (Hz)": audio_features.get("pitch_mean"),
-            "Pitch Variation Coeff (%)": intonation_data.get("pitchVariation"),  # Use the consistent value
-            "Direction Changes/Min": audio_features.get("direction_changes_per_min"),
-        }
-        story.extend(create_metric_table("Intonation", intonation_display_data, list(intonation_display_data.keys())))
+        # Teaching Metrics
+        teaching_data = evaluation_data.get('teaching', {}).get('Concept Assessment', {})
+        if teaching_data:
+            story.append(Paragraph("Teaching Metrics", heading2_style))
+            teaching_metrics = []
+            for category, data in teaching_data.items():
+                if isinstance(data, dict) and 'Score' in data:
+                    score = data.get('Score', 0)
+                    status = "✓" if score == 1 else "✗"
+                    teaching_metrics.append([category, f"{score}", status])
+            
+            if teaching_metrics:
+                teaching_table = Table(teaching_metrics, colWidths=[250, 100, 100])
+                teaching_table.setStyle(TableStyle([
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 12),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('TOPPADDING', (0, 0), (-1, -1), 8),
+                ]))
+                story.append(teaching_table)
+                story.append(Spacer(1, 20))
 
-        # Energy Table
-        energy_display_data = {
-            "Mean Amplitude": audio_features.get("mean_amplitude"),
-            "Amplitude Deviation": audio_features.get("amplitude_deviation"),
-        }
-        story.extend(create_metric_table("Energy", energy_display_data, list(energy_display_data.keys())))
+        # Add a footer with page numbers
+        def add_page_number(canvas, doc):
+            canvas.saveState()
+            canvas.setFont('Helvetica', 9)
+            canvas.drawRightString(
+                doc.pagesize[0] - doc.rightMargin,
+                doc.bottomMargin/2,
+                f"Page {doc.page}"
+            )
+            canvas.restoreState()
 
-        # --- Teaching Analysis ---
-        story.append(Paragraph("Teaching Analysis", heading1_style))
-        teaching_data = evaluation_data.get("teaching", {})
-
-        # Concept Assessment
-        concept_assessment_data = teaching_data.get("Concept Assessment", {})
-        story.extend(create_analysis_table("Concept Assessment", concept_assessment_data))
-
-        # Code Assessment
-        code_assessment_data = teaching_data.get("Code Assessment", {})
-        story.extend(create_analysis_table("Code Assessment", code_assessment_data))
-
-        story.append(Spacer(1, 15))
-
-        # --- Build PDF ---
-        doc.build(story)
+        # Build the PDF with page numbers
+        doc.build(story, onFirstPage=add_page_number, onLaterPages=add_page_number)
         pdf_data = buffer.getvalue()
         buffer.close()
         logger.info("PDF report generated successfully.")
         return pdf_data
 
     except ImportError:
-         logger.error("Reportlab not installed. Cannot generate PDF.")
-         raise RuntimeError("PDF generation requires 'reportlab' library. Please install it (`pip install reportlab`).")
+        logger.error("Reportlab not installed. Cannot generate PDF.")
+        raise RuntimeError("PDF generation requires 'reportlab' library. Please install it (`pip install reportlab`).")
     except Exception as e:
-        logger.error(f"Error generating PDF report: {e}", exc_info=True) # Log traceback
-        # Provide a more informative error message
+        logger.error(f"Error generating PDF report: {e}", exc_info=True)
         raise RuntimeError(f"Failed to generate PDF report: {str(e)}. Check logs for details.")
 
 class GoogleDriveHandler:
@@ -4552,85 +3236,130 @@ def validate_metrics(metrics: Dict[str, float]) -> Dict[str, bool]:
     }
 
 def calculate_teaching_score(metrics: Dict[str, Any]) -> float:
-    """Calculate overall teaching score with balanced weights"""
+    """Calculate overall teaching score with balanced weights and quality assessment"""
     # Communication score (0-5)
     speech_metrics = metrics.get('speech_metrics', {})
     fluency_data = speech_metrics.get('fluency', {})
     intonation_data = speech_metrics.get('intonation', {})
     speed_data = speech_metrics.get('speed', {})
     
-    # Calculate communication components with proper thresholds
+    # Calculate communication components with quality-based scoring
     comm_score_components = {
-        "monotone": 1 if speech_metrics.get('monotone_score', 1) < 0.3 else 0,
-        "pitch_variation": 1 if intonation_data.get('pitchVariation', 0) >= 20 else 0,
-        "direction_changes": 1 if intonation_data.get('direction_changes_per_min', 0) >= 300 else 0,
-        "fillers": 1 if fluency_data.get('fillersPerMin', 0) <= 3 else 0,
-        "errors": 1 if fluency_data.get('errorsPerMin', 0) <= 1 else 0,
-        "pace": 1 if 120 <= speed_data.get('wpm', 0) <= 160 else 0
+        "monotone": 1 if speech_metrics.get('monotone_score', 1) < 0.3 else 0.5 if speech_metrics.get('monotone_score', 1) < 0.5 else 0,
+        "pitch_variation": 1 if intonation_data.get('pitchVariation', 0) >= 20 else 0.5 if intonation_data.get('pitchVariation', 0) >= 15 else 0,
+        "direction_changes": 1 if intonation_data.get('direction_changes_per_min', 0) >= 300 else 0.5 if intonation_data.get('direction_changes_per_min', 0) >= 200 else 0,
+        "fillers": 1 if fluency_data.get('fillersPerMin', 0) <= 3 else 0.5 if fluency_data.get('fillersPerMin', 0) <= 5 else 0,
+        "errors": 1 if fluency_data.get('errorsPerMin', 0) <= 1 else 0.5 if fluency_data.get('errorsPerMin', 0) <= 2 else 0,
+        "pace": 1 if 120 <= speed_data.get('wpm', 0) <= 160 else 0.5 if 100 <= speed_data.get('wpm', 0) <= 180 else 0
     }
-    # Calculate communication score (0-5) with 6 components, dropping lowest score
+    
+    # Calculate communication score (0-5) with quality-based weighting
     comm_scores = sorted(comm_score_components.values())
     comm_score = sum(comm_scores[1:]) / 5 * 5  # Convert to 0-5 scale
     
-    # Teaching score (0-3)
+    # Teaching score (0-3) with quality assessment
     teaching_data = metrics.get('teaching', {})
     concept_data = teaching_data.get('Concept Assessment', {})
     
+    # Quality-based scoring for teaching components
     teaching_score_components = {
-        "content_accuracy": 1 if concept_data.get('Subject Matter Accuracy', {}).get('Score', 0) == 1 else 0,
-        "industry_examples": 1 if concept_data.get('Examples and Business Context', {}).get('Score', 0) == 1 else 0,
-        "qna_accuracy": 1 if concept_data.get('Question Handling', {}).get('Score', 0) == 1 else 0,
-        "engagement": 1 if concept_data.get('Engagement and Interaction', {}).get('Score', 0) == 1 else 0
+        "content_accuracy": {
+            "score": 1 if concept_data.get('Subject Matter Accuracy', {}).get('Score', 0) == 1 else 0.5 if concept_data.get('Subject Matter Accuracy', {}).get('Score', 0) == 0.5 else 0,
+            "quality": concept_data.get('Subject Matter Accuracy', {}).get('Quality', 'low')
+        },
+        "industry_examples": {
+            "score": 1 if concept_data.get('Examples and Business Context', {}).get('Score', 0) == 1 else 0.5 if concept_data.get('Examples and Business Context', {}).get('Score', 0) == 0.5 else 0,
+            "quality": concept_data.get('Examples and Business Context', {}).get('Quality', 'low')
+        },
+        "qna_accuracy": {
+            "score": 1 if concept_data.get('Question Handling', {}).get('Score', 0) == 1 else 0.5 if concept_data.get('Question Handling', {}).get('Score', 0) == 0.5 else 0,
+            "quality": concept_data.get('Question Handling', {}).get('Quality', 'low')
+        },
+        "engagement": {
+            "score": 1 if concept_data.get('Engagement and Interaction', {}).get('Score', 0) == 1 else 0.5 if concept_data.get('Engagement and Interaction', {}).get('Score', 0) == 0.5 else 0,
+            "quality": concept_data.get('Engagement and Interaction', {}).get('Quality', 'low')
+        }
     }
-    teaching_score = sum(teaching_score_components.values()) / 4 * 3  # Convert to 0-3 scale
     
-    # Question handling score (0-2)
+    # Calculate teaching score with quality adjustment
+    quality_multipliers = {'high': 1.0, 'medium': 0.7, 'low': 0.4}
+    teaching_scores = []
+    for component in teaching_score_components.values():
+        quality_multiplier = quality_multipliers.get(component['quality'], 0.4)
+        teaching_scores.append(component['score'] * quality_multiplier)
+    
+    teaching_score = sum(teaching_scores) / len(teaching_scores) * 3  # Convert to 0-3 scale
+    
+    # Question handling score (0-2) with quality assessment
     qna_data = concept_data.get('Question Handling', {})
     qna_details = qna_data.get('Details', {})
-    qna_score_components = {
-        "response_accuracy": 1 if qna_details.get('ResponseAccuracy', {}).get('Score', 0) == 1 else 0,
-        "response_completeness": 1 if qna_details.get('ResponseCompleteness', {}).get('Score', 0) == 1 else 0,
-        "confidence_level": 1 if qna_details.get('ConfidenceLevel', {}).get('Score', 0) == 1 else 0
-    }
-    qna_score = sum(qna_score_components.values()) / 3 * 2  # Convert to 0-2 scale
+    response_accuracy = qna_details.get('ResponseAccuracy', {}).get('Score', 0)
+    response_completeness = qna_details.get('ResponseCompleteness', {}).get('Score', 0)
+    response_quality = qna_details.get('ResponseQuality', 'low')
     
-    # Calculate total score (0-10)
-    total_score = comm_score + teaching_score + qna_score
+    qna_score = (response_accuracy + response_completeness) / 2 * quality_multipliers.get(response_quality, 0.4) * 2
     
-    # Apply penalties for critical teaching issues
-    if teaching_score_components['content_accuracy'] == 0:  # Content accuracy is critical
-        total_score *= 0.8  # 20% penalty
-    if teaching_score_components['qna_accuracy'] == 0:  # Q&A accuracy is critical
-        total_score *= 0.9  # 10% penalty
+    # Calculate final score (0-10)
+    final_score = comm_score + teaching_score + qna_score
     
-    return total_score
+    return final_score
 
-def get_teaching_assessment(score: float) -> Dict[str, Any]:
-    """Get teaching assessment based on score"""
-    if score >= 8:
-        return {
-            'rating': 'Excellent',
-            'color': '#2ecc71',
-            'icon': '✅'
-        }
-    elif score >= 6:
-        return {
-            'rating': 'Good',
-            'color': '#f1c40f',
-            'icon': '⚠️'
-        }
-    elif score >= 4:
-        return {
-            'rating': 'Needs Improvement',
-            'color': '#e67e22',
-            'icon': '⚠️'
-        }
+def assess_teaching_quality(metrics: Dict[str, Any]) -> Dict[str, Any]:
+    """Assess the quality of teaching components and provide detailed feedback"""
+    teaching_data = metrics.get('teaching', {})
+    concept_data = teaching_data.get('Concept Assessment', {})
+    
+    # Initialize assessment results
+    assessment = {
+        'strengths': [],
+        'concerns': [],
+        'reasons': [],
+        'overall_quality': 'low'
+    }
+    
+    # Evaluate content accuracy
+    content_accuracy = concept_data.get('Subject Matter Accuracy', {})
+    if content_accuracy.get('Score', 0) == 1 and content_accuracy.get('Quality', 'low') == 'high':
+        assessment['strengths'].append('Strong content accuracy with comprehensive coverage')
+    elif content_accuracy.get('Score', 0) < 1:
+        assessment['concerns'].append('Lack of accurate content and examples in teaching')
+        assessment['reasons'].append('Content accuracy needs improvement for effective teaching')
+    
+    # Evaluate engagement
+    engagement = concept_data.get('Engagement and Interaction', {})
+    if engagement.get('Score', 0) == 1 and engagement.get('Quality', 'low') == 'high':
+        assessment['strengths'].append('Excellent student engagement and interaction')
+    elif engagement.get('Score', 0) < 1:
+        assessment['concerns'].append('Inability to engage with students effectively')
+        assessment['reasons'].append('Student engagement metrics indicate need for improvement')
+    
+    # Evaluate question handling
+    qna = concept_data.get('Question Handling', {})
+    qna_details = qna.get('Details', {})
+    if qna.get('Score', 0) == 1 and qna_details.get('ResponseQuality', 'low') == 'high':
+        assessment['strengths'].append('Strong question handling and response quality')
+    elif qna.get('Score', 0) < 1:
+        assessment['concerns'].append('Poor performance in answering questions correctly')
+        assessment['reasons'].append('Question handling needs significant improvement')
+    
+    # Determine overall quality
+    quality_scores = [
+        content_accuracy.get('Quality', 'low'),
+        engagement.get('Quality', 'low'),
+        qna_details.get('ResponseQuality', 'low')
+    ]
+    quality_counts = {'high': quality_scores.count('high'), 
+                     'medium': quality_scores.count('medium'),
+                     'low': quality_scores.count('low')}
+    
+    if quality_counts['high'] >= 2:
+        assessment['overall_quality'] = 'high'
+    elif quality_counts['medium'] >= 2 or (quality_counts['high'] == 1 and quality_counts['medium'] == 1):
+        assessment['overall_quality'] = 'medium'
     else:
-        return {
-            'rating': 'Poor',
-            'color': '#e74c3c',
-            'icon': '❌'
-        }
+        assessment['overall_quality'] = 'low'
+    
+    return assessment
 
 def main():
     try:
@@ -4795,4 +3524,3 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
         logger.error(f"Application error: {e}", exc_info=True)
-    
