@@ -162,6 +162,12 @@ def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_
         intonation_display_data = audio_features.get("monotone_score", ""), audio_features.get("pitch_mean", ""), audio_features.get("pitch_variation_coeff", ""), audio_features.get("direction_changes_per_min", "")
         energy_display_data = audio_features.get("mean_amplitude", ""), audio_features.get("amplitude_deviation", "")
 
+        # Calculate acceptance status for communication metrics
+        speed_accepted = 1 if 120 <= float(words_per_minute or 0) <= 160 else 0
+        fillers_accepted = 1 if float(fillers_per_min or 0) <= 3 else 0
+        errors_accepted = 1 if float(errors_per_min or 0) <= 1 else 0
+        pitch_accepted = 1 if float(pitch_variation or 0) >= 20 else 0
+
         # --- Teaching Analysis (flatten all categories) ---
         concept_flat = {}
         for cat, details in concept_data.items():
@@ -189,6 +195,7 @@ def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_
             total_words, duration_minutes, detected_fillers, detected_errors, pauses_per_min,
             intonation_display_data[0], intonation_display_data[1], intonation_display_data[2], intonation_display_data[3],
             energy_display_data[0], energy_display_data[1],
+            speed_accepted, fillers_accepted, errors_accepted, pitch_accepted,  # Add acceptance status columns
         ]
         # Add all concept/code assessment fields
         for k in sorted(concept_flat):
@@ -204,6 +211,7 @@ def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_
             "Total Words", "Duration (min)", "Detected Fillers", "Detected Errors", "Pauses/Min",
             "Monotone Score", "Pitch Mean (Hz)", "Pitch Variation Coeff (%)", "Direction Changes/Min",
             "Mean Amplitude", "Amplitude Deviation",
+            "Speed Accepted", "Fillers Accepted", "Errors Accepted", "Pitch Accepted",  # Add acceptance status headers
         ]
         for k in sorted(concept_flat):
             header.append(k)
