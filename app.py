@@ -4571,12 +4571,6 @@ def calculate_teaching_score(metrics: Dict[str, Any]) -> float:
     teaching_score = calculate_teaching_component_score(metrics)
     qna_score = calculate_qna_score(metrics)
     
-    # Apply critical penalties before final calculation
-    if not teaching_score_components['content_accuracy']:
-        teaching_score *= 0.5  # 50% penalty for content accuracy
-    if not teaching_score_components['qna_accuracy']:
-        qna_score *= 0.5      # 50% penalty for Q&A accuracy
-        
     # Calculate weighted total
     total_score = (
         comm_score * weights['communication'] +
@@ -4635,6 +4629,53 @@ def standardize_metric(metric_name: str, value: float) -> float:
         if value < min_val:
             return max(0, 1 - (min_val - value) / min_val)
         return max(0, 1 - (value - max_val) / max_val)
+
+def calculate_communication_score(metrics: Dict[str, Any]) -> float:
+    speech_metrics = metrics.get("speech_metrics", {})
+    comm_metrics = speech_metrics.get('intonation', {})
+    monotone_score = comm_metrics.get('monotone_score', speech_metrics.get('monotone_score', 0))
+    pitch_variation = comm_metrics.get('pitchVariation', comm_metrics.get('pitch_variation_coeff', 0))
+    direction_changes = comm_metrics.get('direction_changes_per_min', 0)
+    fillers_per_min = speech_metrics.get('fluency', {}).get('fillersPerMin', 0)
+    errors_per_min = speech_metrics.get('fluency', {}).get('errorsPerMin', 0)
+    words_per_minute = speech_metrics.get('speed', {}).get('wpm', 0)
+
+    comm_score_components = [
+        1 if monotone_score < 0.3 else 0,
+        1 if pitch_variation >= 20 else 0,
+        1 if direction_changes >= 300 else 0,
+        1 if fillers_per_min <= 3 else 0,
+        1 if errors_per_min <= 1 else 0,
+        1 if 120 <= words_per_minute <= 160 else 0
+    ]
+    comm_scores = sorted(comm_score_components)
+    comm_score = sum(comm_scores[1:]) / 5  # 0-1 scale
+    return comm_score
+
+def calculate_teaching_component_score(metrics: Dict[str, Any]) -> float:
+    teaching_data = metrics.get("teaching", {})
+    concept_data = teaching_data.get("Concept Assessment", {})
+    teaching_score_components = [
+        1 if concept_data.get('Subject Matter Accuracy', {}).get('Score', 0) == 1 else 0,
+        1 if concept_data.get('Examples and Business Context', {}).get('Score', 0) == 1 else 0,
+        1 if concept_data.get('Question Handling', {}).get('Score', 0) == 1 else 0,
+        1 if concept_data.get('Engagement and Interaction', {}).get('Score', 0) == 1 else 0
+    ]
+    teaching_score = sum(teaching_score_components) / 4  # 0-1 scale
+    return teaching_score
+
+def calculate_qna_score(metrics: Dict[str, Any]) -> float:
+    teaching_data = metrics.get("teaching", {})
+    concept_data = teaching_data.get("Concept Assessment", {})
+    qna_data = concept_data.get('Question Handling', {})
+    qna_details = qna_data.get('Details', {})
+    qna_score_components = [
+        1 if qna_details.get('ResponseAccuracy', {}).get('Score', 0) == 1 else 0,
+        1 if qna_details.get('ResponseCompleteness', {}).get('Score', 0) == 1 else 0,
+        1 if qna_details.get('ConfidenceLevel', {}).get('Score', 0) == 1 else 0
+    ]
+    qna_score = sum(qna_score_components) / 3  # 0-1 scale
+    return qna_score
 
 def main():
     try:
