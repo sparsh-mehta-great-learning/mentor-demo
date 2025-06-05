@@ -78,6 +78,13 @@ TEACHING_METRIC_WEIGHTS = {
     'communication': 0.25         # Kept at 0.25 as requested
 }
 
+TEACHING_ASSESSMENT_THRESHOLDS = {
+    'excellent': 0.9,  # 90% or above
+    'good': 0.7,      # 70% or above
+    'fair': 0.5,      # 50% or above
+    'poor': 0.0       # Below 50%
+}
+
 def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_name=SHEET_NAME):
     """Append all PDF report metrics as a row to the Google Sheet. If the sheet is empty, add the header first."""
     try:
@@ -4552,85 +4559,82 @@ def validate_metrics(metrics: Dict[str, float]) -> Dict[str, bool]:
     }
 
 def calculate_teaching_score(metrics: Dict[str, Any]) -> float:
-    """Calculate overall teaching score with balanced weights"""
-    # Communication score (0-5)
-    speech_metrics = metrics.get('speech_metrics', {})
-    fluency_data = speech_metrics.get('fluency', {})
-    intonation_data = speech_metrics.get('intonation', {})
-    speed_data = speech_metrics.get('speed', {})
-    
-    # Calculate communication components with proper thresholds
-    comm_score_components = {
-        "monotone": 1 if speech_metrics.get('monotone_score', 1) < 0.3 else 0,
-        "pitch_variation": 1 if intonation_data.get('pitchVariation', 0) >= 20 else 0,
-        "direction_changes": 1 if intonation_data.get('direction_changes_per_min', 0) >= 300 else 0,
-        "fillers": 1 if fluency_data.get('fillersPerMin', 0) <= 3 else 0,
-        "errors": 1 if fluency_data.get('errorsPerMin', 0) <= 1 else 0,
-        "pace": 1 if 120 <= speed_data.get('wpm', 0) <= 160 else 0
+    # Base weights for each component
+    weights = {
+        'communication': 0.4,  # 40% weight
+        'teaching': 0.4,      # 40% weight
+        'qna': 0.2           # 20% weight
     }
-    # Calculate communication score (0-5) with 6 components, dropping lowest score
-    comm_scores = sorted(comm_score_components.values())
-    comm_score = sum(comm_scores[1:]) / 5 * 5  # Convert to 0-5 scale
     
-    # Teaching score (0-3)
-    teaching_data = metrics.get('teaching', {})
-    concept_data = teaching_data.get('Concept Assessment', {})
+    # Calculate component scores (0-1 scale)
+    comm_score = calculate_communication_score(metrics)
+    teaching_score = calculate_teaching_component_score(metrics)
+    qna_score = calculate_qna_score(metrics)
     
-    teaching_score_components = {
-        "content_accuracy": 1 if concept_data.get('Subject Matter Accuracy', {}).get('Score', 0) == 1 else 0,
-        "industry_examples": 1 if concept_data.get('Examples and Business Context', {}).get('Score', 0) == 1 else 0,
-        "qna_accuracy": 1 if concept_data.get('Question Handling', {}).get('Score', 0) == 1 else 0,
-        "engagement": 1 if concept_data.get('Engagement and Interaction', {}).get('Score', 0) == 1 else 0
-    }
-    teaching_score = sum(teaching_score_components.values()) / 4 * 3  # Convert to 0-3 scale
-    
-    # Question handling score (0-2)
-    qna_data = concept_data.get('Question Handling', {})
-    qna_details = qna_data.get('Details', {})
-    qna_score_components = {
-        "response_accuracy": 1 if qna_details.get('ResponseAccuracy', {}).get('Score', 0) == 1 else 0,
-        "response_completeness": 1 if qna_details.get('ResponseCompleteness', {}).get('Score', 0) == 1 else 0,
-        "confidence_level": 1 if qna_details.get('ConfidenceLevel', {}).get('Score', 0) == 1 else 0
-    }
-    qna_score = sum(qna_score_components.values()) / 3 * 2  # Convert to 0-2 scale
-    
-    # Calculate total score (0-10)
-    total_score = comm_score + teaching_score + qna_score
-    
-    # Apply penalties for critical teaching issues
-    if teaching_score_components['content_accuracy'] == 0:  # Content accuracy is critical
-        total_score *= 0.8  # 20% penalty
-    if teaching_score_components['qna_accuracy'] == 0:  # Q&A accuracy is critical
-        total_score *= 0.9  # 10% penalty
+    # Apply critical penalties before final calculation
+    if not teaching_score_components['content_accuracy']:
+        teaching_score *= 0.5  # 50% penalty for content accuracy
+    if not teaching_score_components['qna_accuracy']:
+        qna_score *= 0.5      # 50% penalty for Q&A accuracy
+        
+    # Calculate weighted total
+    total_score = (
+        comm_score * weights['communication'] +
+        teaching_score * weights['teaching'] +
+        qna_score * weights['qna']
+    ) * 10  # Convert to 0-10 scale
     
     return total_score
 
 def get_teaching_assessment(score: float) -> Dict[str, Any]:
-    """Get teaching assessment based on score"""
-    if score >= 8:
+    """Get teaching assessment based on standardized thresholds"""
+    if score >= TEACHING_ASSESSMENT_THRESHOLDS['excellent'] * 10:
         return {
             'rating': 'Excellent',
             'color': '#2ecc71',
-            'icon': '✅'
+            'icon': '✅',
+            'description': 'Outstanding performance across all metrics'
         }
-    elif score >= 6:
+    elif score >= TEACHING_ASSESSMENT_THRESHOLDS['good'] * 10:
         return {
             'rating': 'Good',
             'color': '#f1c40f',
-            'icon': '⚠️'
+            'icon': '⚠️',
+            'description': 'Solid performance with some areas for improvement'
         }
-    elif score >= 4:
+    elif score >= TEACHING_ASSESSMENT_THRESHOLDS['fair'] * 10:
         return {
             'rating': 'Needs Improvement',
             'color': '#e67e22',
-            'icon': '⚠️'
+            'icon': '⚠️',
+            'description': 'Several areas need significant improvement'
         }
     else:
         return {
             'rating': 'Poor',
             'color': '#e74c3c',
-            'icon': '❌'
+            'icon': '❌',
+            'description': 'Major improvements needed across multiple areas'
         }
+
+def standardize_metric(metric_name: str, value: float) -> float:
+    """Standardize metric values to 0-1 scale"""
+    thresholds = METRIC_THRESHOLDS[metric_name]
+    
+    if 'excellent' in thresholds:
+        if value <= thresholds['excellent']:
+            return 1.0
+        elif value <= thresholds['good']:
+            return 0.7
+        return 0.0
+    else:
+        min_val, max_val = thresholds['min'], thresholds['max']
+        if min_val <= value <= max_val:
+            return 1.0
+        # Linear interpolation for values outside range
+        if value < min_val:
+            return max(0, 1 - (min_val - value) / min_val)
+        return max(0, 1 - (value - max_val) / max_val)
 
 def main():
     try:
