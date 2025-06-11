@@ -66,18 +66,18 @@ METRIC_THRESHOLDS = {
     'direction_changes': {'min': 200, 'optimal_min': 300, 'optimal_max': 600, 'max': 800},
     'fillers_per_min': {'excellent': 1, 'good': 2, 'acceptable': 3, 'max_acceptable': 4},
     'errors_per_min': {'excellent': 0.2, 'good': 0.5, 'acceptable': 1, 'max_acceptable': 1.5},
-    'words_per_minute': {'optimal_min': 130, 'optimal_max': 150, 'good_min': 120, 'good_max': 160, 'acceptable_min': 110, 'acceptable_max': 170, 'max_acceptable_min': 100, 'max_acceptable_max': 180}
+    'words_per_minute': {'optimal_min': 130, 'optimal_max': 150, 'good_min': 120, 'good_max': 180, 'acceptable_min': 110, 'acceptable_max': 190, 'max_acceptable_min': 100, 'max_acceptable_max': 200}
 }
 
 # Balanced metric thresholds with more realistic expectations
-# New Philosophy: Prioritize teaching content and effectiveness over perfect communication
-# A great teacher with minor communication issues should score higher than a poor teacher with perfect speech
+# Philosophy: Balance teaching content and communication skills appropriately
+# Communication and teaching skills are equally weighted to ensure comprehensive evaluation
 TEACHING_METRIC_WEIGHTS = {
     'content_accuracy': 0.30,      # Strong subject matter knowledge is critical
     'industry_examples': 0.20,     # Practical application is important  
     'qna_accuracy': 0.20,         # Question handling shows expertise
     'engagement': 0.15,           # Student interaction matters
-    'communication': 0.15         # Communication supports but doesn't override content
+    'communication': 0.15         # Communication is equally important as teaching
 }
 
 # More realistic assessment thresholds aligned with new scoring
@@ -135,7 +135,7 @@ def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_
         examples_score = examples.get("Score", "")
         speed_data = speech_metrics.get("speed", {})
         words_per_minute = speed_data.get("wpm", "")
-        pace_score = 1 if 120 <= float(words_per_minute or 0) <= 160 else 0
+        pace_score = 1 if 120 <= float(words_per_minute or 0) <= 180 else 0
         qna_data = concept_data.get("Question Handling", {})
         qna_details = qna_data.get("Details", {})
         response_accuracy = qna_details.get("ResponseAccuracy", {}).get("Score", "")
@@ -174,7 +174,7 @@ def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_
         energy_display_data = audio_features.get("mean_amplitude", ""), audio_features.get("amplitude_deviation", "")
 
         # Calculate acceptance status for communication metrics
-        speed_accepted = 1 if 120 <= float(words_per_minute or 0) <= 160 else 0
+        speed_accepted = 1 if 120 <= float(words_per_minute or 0) <= 180 else 0
         fillers_accepted = 1 if float(fillers_per_min or 0) <= 3 else 0
         errors_accepted = 1 if float(errors_per_min or 0) <= 1 else 0
         pitch_accepted = 1 if float(pitch_variation or 0) >= 20 else 0
@@ -1203,7 +1203,7 @@ Score 0 if ANY of the following are present:
             
             return {
                 "speed": {
-                    "score": 1 if 120 <= words_per_minute <= 160 else 0,
+                    "score": 1 if 120 <= words_per_minute <= 180 else 0,
                     "wpm": words_per_minute,
                     "total_words": words,
                     "duration_minutes": duration_minutes
@@ -1881,7 +1881,7 @@ class MentorEvaluator:
             
             return {
                 "speed": {
-                    "score": 1 if 120 <= words_per_minute <= 160 else 0,
+                    "score": 1 if 120 <= words_per_minute <= 180 else 0,
                     "wpm": words_per_minute,
                     "total_words": words,
                     "duration_minutes": duration_minutes
@@ -2036,7 +2036,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
             speech_metrics = evaluation.get("speech_metrics", {})
             speed_data = speech_metrics.get("speed", {})
             words_per_minute = speed_data.get("wpm", 0)
-            speed_score = "✅" if 120 <= words_per_minute <= 160 else "❌"
+            speed_score = "✅" if 120 <= words_per_minute <= 180 else "❌"
             st.markdown("""
                 <div class="metric-box">
                     <h3>Communication</h3>
@@ -2220,7 +2220,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
             words_per_minute = speed_data.get("wpm", 0)
             
             # Calculate overall communication score
-            speed_score = 1 if 120 <= words_per_minute <= 160 else 0
+            speed_score = 1 if 120 <= words_per_minute <= 180 else 0
             fluency_data = speech_metrics.get("fluency", {})
             fillers_per_minute = float(fluency_data.get("fillersPerMin", 0))
             errors_per_minute = float(fluency_data.get("errorsPerMin", 0))
@@ -2238,12 +2238,12 @@ def display_evaluation(evaluation: Dict[str, Any]):
             
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Score", "✅ Pass" if 120 <= words_per_minute <= 160 else "❌ Needs Improvement")
+                st.metric("Score", "✅ Pass" if 120 <= words_per_minute <= 180 else "❌ Needs Improvement")
                 st.metric("Words per Minute", f"{words_per_minute:.1f}")
             with col2:
                 st.info("""
-                **Acceptable Range:** 120-160 WPM
-                - Optimal teaching pace: 130-160 WPM
+                **Acceptable Range:** 120-180 WPM
+                - Optimal teaching pace: 130-150 WPM
                 """)
 
             # Fluency Metrics
@@ -2510,7 +2510,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
                 # Pace Assessment
                 speed_data = speech_metrics.get("speed", {})
                 words_per_minute = speed_data.get("wpm", 0)
-                pace_score = 1 if 120 <= words_per_minute <= 160 else 0
+                pace_score = 1 if 120 <= words_per_minute <= 180 else 0
                 
                 # QnA Assessment
                 qna_data = concept_data.get("Question Handling", {})
@@ -2671,12 +2671,12 @@ def display_evaluation(evaluation: Dict[str, Any]):
                         amplitude=mean_amplitude
                     ), unsafe_allow_html=True)
 
-                # Intonation
+                                # Intonation
                 with col9:
                     intonation_data = speech_metrics.get("intonation", {})
-                    pitch_variation = float(intonation_data.get("pitchVariation", 0))
+                    pitch_variation = float(intonation_data.get("pitchVariation", 0))  # This is already pitch_variation_coeff
                     pitch_mean = float(intonation_data.get("pitch", 0))
-                    variation_coeff = (pitch_variation / pitch_mean * 100) if pitch_mean > 0 else 0
+                    variation_coeff = pitch_variation  # Already calculated as coefficient in audio features
                     intonation_score = 1 if 20 <= variation_coeff <= 40 else 0
                     st.markdown("""
                         <div style='background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
@@ -2838,13 +2838,13 @@ def display_evaluation(evaluation: Dict[str, Any]):
                     
                     # Speech pattern analysis
                     intonation_data = speech_metrics.get("intonation", {})
-                    pitch_variation = float(intonation_data.get("pitchVariation", 0))
+                    pitch_variation = float(intonation_data.get("pitchVariation", 0))  # This is already pitch_variation_coeff from audio_features
                     pitch_mean = float(intonation_data.get("pitch", 0))
                     
                     # Confidence indicators
                     filler_confidence = "High" if fillers_per_min <= 2 else "Medium" if fillers_per_min <= 4 else "Low"
                     error_confidence = "High" if errors_per_min <= 0.5 else "Medium" if errors_per_min <= 1 else "Low"
-                    pitch_confidence = "High" if 20 <= (pitch_variation/pitch_mean * 100) <= 40 else "Low"
+                    pitch_confidence = "High" if 20 <= pitch_variation <= 40 else "Low"  # Use pitch_variation directly since it's already a coefficient
 
                     st.markdown("""
                         <div style='background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
@@ -3117,7 +3117,7 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         # Pace Assessment data
         speed_data = speech_metrics.get("speed", {})
         words_per_minute = speed_data.get("wpm", 0)
-        pace_score = 1 if 120 <= words_per_minute <= 160 else 0
+        pace_score = 1 if 120 <= words_per_minute <= 180 else 0
 
         # QnA Assessment data
         qna_data = concept_data.get("Question Handling", {})
@@ -3481,12 +3481,12 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         errors_per_min = float(fluency_data.get("errorsPerMin", 0))
         
         intonation_data = speech_metrics.get("intonation", {})
-        pitch_variation = float(intonation_data.get("pitchVariation", 0))
+        pitch_variation = float(intonation_data.get("pitchVariation", 0))  # This is already pitch_variation_coeff
         pitch_mean = float(intonation_data.get("pitch", 0))
         
         filler_confidence = "High" if fillers_per_min <= 2 else "Medium" if fillers_per_min <= 4 else "Low"
         error_confidence = "High" if errors_per_min <= 0.5 else "Medium" if errors_per_min <= 1 else "Low"
-        pitch_confidence = "High" if 20 <= (pitch_variation/pitch_mean * 100) <= 40 else "Low"
+        pitch_confidence = "High" if 20 <= pitch_variation <= 40 else "Low"  # Use pitch_variation directly
         
         confidence_score = sum([
             1 if filler_confidence == "High" else 0.5 if filler_confidence == "Medium" else 0,
@@ -3499,7 +3499,7 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
             ['Confidence Indicator', 'Level', 'Assessment'],
             ['Filler Words', filler_confidence, f'{fillers_per_min:.1f} per minute'],
             ['Speech Errors', error_confidence, f'{errors_per_min:.1f} per minute'],
-            ['Voice Control', pitch_confidence, f'{pitch_variation/pitch_mean * 100 if pitch_mean > 0 else 0:.1f}% variation']
+            ['Voice Control', pitch_confidence, f'{pitch_variation:.1f}% variation']
         ]
         
         t = Table(confidence_data, colWidths=[150, 100, 200])
@@ -3625,7 +3625,7 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         pitch_variation = float(intonation_data.get("pitchVariation", 0))
 
         # Define acceptance criteria for each metric
-        speed_accepted = 120 <= words_per_minute <= 160
+        speed_accepted = 120 <= words_per_minute <= 180
         fillers_accepted = fillers_per_min <= 3
         errors_accepted = errors_per_min <= 1
         pitch_accepted = pitch_variation >= 20
@@ -3636,7 +3636,7 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
             ['Speaking Pace', 
              '✓' if speed_accepted else '✗',
              f'{words_per_minute:.1f} WPM',
-             '120-160 WPM'],
+             '120-180 WPM'],
             ['Filler Words',
              '✓' if fillers_accepted else '✗',
              f'{fillers_per_min:.1f} per min',
@@ -4591,7 +4591,7 @@ def calculate_hiring_score(metrics: Dict[str, Any]) -> Dict[str, Any]:
     concept_data = teaching_data.get("Concept Assessment", {})
     audio_features = metrics.get("audio_features", {})
     
-    # 1. Communication Metrics (30% weight) - Reduced from 40% to be less punitive
+    # 1. Communication Metrics (40% weight) - Restored original weight
     # Use more nuanced scoring for communication metrics
     wpm = speech_metrics.get('speed', {}).get('wpm', 0)
     fillers_per_min = speech_metrics.get('fluency', {}).get('fillersPerMin', 0)
@@ -4599,17 +4599,24 @@ def calculate_hiring_score(metrics: Dict[str, Any]) -> Dict[str, Any]:
     pitch_variation = speech_metrics.get('intonation', {}).get('pitchVariation', 0)
     monotone_score = audio_features.get('monotone_score', 0)
     
-    # More graduated scoring instead of binary
+    # Debug logging to see what values we're getting
+    logger.info(f"Communication metrics - WPM: {wpm}, Fillers: {fillers_per_min}, Errors: {errors_per_min}, Pitch: {pitch_variation}, Monotone: {monotone_score}")
+    
+    # More graduated scoring instead of binary with expanded WPM range
     comm_scores = {
         'monotone': 1.0 if monotone_score < 0.1 else 0.8 if monotone_score < 0.3 else 0.6 if monotone_score < 0.5 else 0.3,
         'pitch_variation': 1.0 if pitch_variation >= 25 else 0.8 if pitch_variation >= 20 else 0.6 if pitch_variation >= 15 else 0.3,
         'fillers': 1.0 if fillers_per_min <= 1 else 0.9 if fillers_per_min <= 2 else 0.7 if fillers_per_min <= 3 else 0.5 if fillers_per_min <= 4 else 0.3,
         'errors': 1.0 if errors_per_min <= 0.2 else 0.9 if errors_per_min <= 0.5 else 0.8 if errors_per_min <= 1 else 0.6 if errors_per_min <= 1.5 else 0.3,
-        'pace': 1.0 if 130 <= wpm <= 150 else 0.9 if 120 <= wpm <= 160 else 0.7 if 110 <= wpm <= 170 else 0.5 if 100 <= wpm <= 180 else 0.3
+        'pace': 1.0 if 130 <= wpm <= 150 else 0.9 if 120 <= wpm <= 180 else 0.7 if 110 <= wpm <= 190 else 0.5 if 100 <= wpm <= 200 else 0.3
     }
-    comm_score = sum(comm_scores.values()) / len(comm_scores) * 3  # Convert to 0-3 scale
+    comm_score = sum(comm_scores.values()) / len(comm_scores) * 4  # Convert to 0-4 scale
     
-    # 2. Teaching Metrics (50% weight) - Increased from 40% as this is most important
+    # Debug logging
+    logger.info(f"Individual communication scores: {comm_scores}")
+    logger.info(f"Total communication score: {comm_score}/4")
+    
+    # 2. Teaching Metrics (40% weight) - Restored original weight
     teaching_scores = {
         'content_accuracy': 1 if concept_data.get('Subject Matter Accuracy', {}).get('Score', 0) == 1 else 0,
         'examples': 1 if concept_data.get('Examples and Business Context', {}).get('Score', 0) == 1 else 0,
@@ -4617,7 +4624,11 @@ def calculate_hiring_score(metrics: Dict[str, Any]) -> Dict[str, Any]:
         'engagement': 1 if concept_data.get('Engagement and Interaction', {}).get('Score', 0) == 1 else 0,
         'professional_tone': 1 if concept_data.get('Professional Tone', {}).get('Score', 0) == 1 else 0
     }
-    teaching_score = sum(teaching_scores.values()) / len(teaching_scores) * 5  # Convert to 0-5 scale
+    teaching_score = sum(teaching_scores.values()) / len(teaching_scores) * 4  # Convert to 0-4 scale
+    
+    # Debug logging
+    logger.info(f"Teaching scores: {teaching_scores}")
+    logger.info(f"Total teaching score: {teaching_score}/4")
     
     # 3. QnA Metrics (20% weight) - Same weight but more forgiving
     qna_data = concept_data.get('Question Handling', {})
@@ -4629,8 +4640,15 @@ def calculate_hiring_score(metrics: Dict[str, Any]) -> Dict[str, Any]:
     }
     qna_score = sum(qna_scores.values()) / len(qna_scores) * 2  # Convert to 0-2 scale
     
+    # Debug logging
+    logger.info(f"QnA scores: {qna_scores}")
+    logger.info(f"Total QnA score: {qna_score}/2")
+    
     # Calculate total score (0-10 scale)
     total_score = comm_score + teaching_score + qna_score
+    
+    # Debug logging
+    logger.info(f"Final score calculation: {comm_score:.2f} + {teaching_score:.2f} + {qna_score:.2f} = {total_score:.2f}/10")
     
     # More nuanced assessment bands
     if total_score >= 8.5:
