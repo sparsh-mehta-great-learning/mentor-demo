@@ -1243,10 +1243,10 @@ Score 0 if ANY of the following are present:
                     "mu": audio_features.get("pitch_mean", 0)
                 },
                 "energy": {
-                    "score": 1 if 60 <= audio_features.get("mean_amplitude", 0) <= 75 else 0,
+                    "score": 1 if 5 <= audio_features.get("mean_amplitude", 0) <= 15 else 0,
                     "meanAmplitude": audio_features.get("mean_amplitude", 0),
                     "amplitudeDeviation": audio_features.get("amplitude_deviation", 0),
-                    "variationScore": 1 if 0.05 <= audio_features.get("amplitude_deviation", 0) <= 0.15 else 0
+                    "variationScore": 1 if 0.05 <= audio_features.get("amplitude_deviation", 0) <= 1.0 else 0
                 }
             }
 
@@ -1921,10 +1921,10 @@ class MentorEvaluator:
                     "mu": audio_features.get("pitch_mean", 0)
                 },
                 "energy": {
-                    "score": 1 if 60 <= audio_features.get("mean_amplitude", 0) <= 75 else 0,
+                    "score": 1 if 5 <= audio_features.get("mean_amplitude", 0) <= 15 else 0,
                     "meanAmplitude": audio_features.get("mean_amplitude", 0),
                     "amplitudeDeviation": audio_features.get("amplitude_deviation", 0),
-                    "variationScore": 1 if 0.05 <= audio_features.get("amplitude_deviation", 0) <= 0.15 else 0
+                    "variationScore": 1 if 0.05 <= audio_features.get("amplitude_deviation", 0) <= 1.0 else 0
                 }
             }
 
@@ -2361,8 +2361,8 @@ def display_evaluation(evaluation: Dict[str, Any]):
             with col2:
                 st.info("""
                 **Acceptable Ranges:**
-                - Mean Amplitude: 60-75
-                - Amplitude Deviation: 0.05-0.15
+                - Mean Amplitude: 5-15
+                - Amplitude Deviation: 0.05-1.0
                 """)
 
         with tabs[1]:
@@ -2653,7 +2653,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
                 with col8:
                     energy_data = speech_metrics.get("energy", {})
                     mean_amplitude = float(energy_data.get("meanAmplitude", 0))
-                    energy_score = 1 if 60 <= mean_amplitude <= 75 else 0
+                    energy_score = 1 if 5 <= mean_amplitude <= 15 else 0
                     st.markdown("""
                         <div style='background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
                             <h4 style='color: #1f77b4; font-size: 16px;'>⚡ Energy Level</h4>
