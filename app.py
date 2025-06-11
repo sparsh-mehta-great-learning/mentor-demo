@@ -66,7 +66,7 @@ METRIC_THRESHOLDS = {
     'direction_changes': {'min': 300, 'max': 600},
     'fillers_per_min': {'excellent': 1, 'good': 3},
     'errors_per_min': {'excellent': 0.2, 'good': 1},
-    'words_per_minute': {'min': 120, 'max': 160}
+    'words_per_minute': {'min': 120, 'max': 180}
 }
 
 # New metric thresholds with teaching quality weights
@@ -131,7 +131,7 @@ def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_
         examples_score = examples.get("Score", "")
         speed_data = speech_metrics.get("speed", {})
         words_per_minute = speed_data.get("wpm", "")
-        pace_score = 1 if 120 <= float(words_per_minute or 0) <= 160 else 0
+        pace_score = 1 if 120 <= float(words_per_minute or 0) <= 180 else 0
         qna_data = concept_data.get("Question Handling", {})
         qna_details = qna_data.get("Details", {})
         response_accuracy = qna_details.get("ResponseAccuracy", {}).get("Score", "")
@@ -170,7 +170,7 @@ def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_
         energy_display_data = audio_features.get("mean_amplitude", ""), audio_features.get("amplitude_deviation", "")
 
         # Calculate acceptance status for communication metrics
-        speed_accepted = 1 if 120 <= float(words_per_minute or 0) <= 160 else 0
+        speed_accepted = 1 if 120 <= float(words_per_minute or 0) <= 180 else 0
         fillers_accepted = 1 if float(fillers_per_min or 0) <= 3 else 0
         errors_accepted = 1 if float(errors_per_min or 0) <= 1 else 0
         pitch_accepted = 1 if float(pitch_variation or 0) >= 20 else 0
@@ -1199,7 +1199,7 @@ Score 0 if ANY of the following are present:
             
             return {
                 "speed": {
-                    "score": 1 if 120 <= words_per_minute <= 160 else 0,
+                    "score": 1 if 120 <= words_per_minute <= 180 else 0,
                     "wpm": words_per_minute,
                     "total_words": words,
                     "duration_minutes": duration_minutes
@@ -1239,10 +1239,10 @@ Score 0 if ANY of the following are present:
                     "mu": audio_features.get("pitch_mean", 0)
                 },
                 "energy": {
-                    "score": 1 if 60 <= audio_features.get("mean_amplitude", 0) <= 75 else 0,
+                    "score": 1 if 5 <= audio_features.get("mean_amplitude", 0) <= 10 else 0,  # Changed from 60-75 to 5-10
                     "meanAmplitude": audio_features.get("mean_amplitude", 0),
                     "amplitudeDeviation": audio_features.get("amplitude_deviation", 0),
-                    "variationScore": 1 if 0.05 <= audio_features.get("amplitude_deviation", 0) <= 0.15 else 0
+                    "variationScore": 1 if 0.5 <= audio_features.get("amplitude_deviation", 0) <= 1.0 else 0  # Changed from 0.05-0.15 to 0.5-1.0
                 }
             }
 
@@ -1877,7 +1877,7 @@ class MentorEvaluator:
             
             return {
                 "speed": {
-                    "score": 1 if 120 <= words_per_minute <= 160 else 0,
+                    "score": 1 if 120 <= words_per_minute <= 180 else 0,
                     "wpm": words_per_minute,
                     "total_words": words,
                     "duration_minutes": duration_minutes
@@ -1917,10 +1917,10 @@ class MentorEvaluator:
                     "mu": audio_features.get("pitch_mean", 0)
                 },
                 "energy": {
-                    "score": 1 if 60 <= audio_features.get("mean_amplitude", 0) <= 75 else 0,
+                    "score": 1 if 5 <= audio_features.get("mean_amplitude", 0) <= 10 else 0,  # Changed from 60-75 to 5-10
                     "meanAmplitude": audio_features.get("mean_amplitude", 0),
                     "amplitudeDeviation": audio_features.get("amplitude_deviation", 0),
-                    "variationScore": 1 if 0.05 <= audio_features.get("amplitude_deviation", 0) <= 0.15 else 0
+                    "variationScore": 1 if 0.5 <= audio_features.get("amplitude_deviation", 0) <= 1.0 else 0  # Changed from 0.05-0.15 to 0.5-1.0
                 }
             }
 
@@ -2032,7 +2032,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
             speech_metrics = evaluation.get("speech_metrics", {})
             speed_data = speech_metrics.get("speed", {})
             words_per_minute = speed_data.get("wpm", 0)
-            speed_score = "✅" if 120 <= words_per_minute <= 160 else "❌"
+            speed_score = "✅" if 120 <= words_per_minute <= 180 else "❌"
             st.markdown("""
                 <div class="metric-box">
                     <h3>Communication</h3>
@@ -2216,7 +2216,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
             words_per_minute = speed_data.get("wpm", 0)
             
             # Calculate overall communication score
-            speed_score = 1 if 120 <= words_per_minute <= 160 else 0
+            speed_score = 1 if 120 <= words_per_minute <= 180 else 0
             fluency_data = speech_metrics.get("fluency", {})
             fillers_per_minute = float(fluency_data.get("fillersPerMin", 0))
             errors_per_minute = float(fluency_data.get("errorsPerMin", 0))
@@ -2234,12 +2234,12 @@ def display_evaluation(evaluation: Dict[str, Any]):
             
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Score", "✅ Pass" if 120 <= words_per_minute <= 160 else "❌ Needs Improvement")
+                st.metric("Score", "✅ Pass" if 120 <= words_per_minute <= 180 else "❌ Needs Improvement")
                 st.metric("Words per Minute", f"{words_per_minute:.1f}")
             with col2:
                 st.info("""
-                **Acceptable Range:** 120-160 WPM
-                - Optimal teaching pace: 130-160 WPM
+                **Acceptable Range:** 120-180 WPM
+                - Optimal teaching pace: 130-180 WPM
                 """)
 
             # Fluency Metrics
@@ -2357,8 +2357,8 @@ def display_evaluation(evaluation: Dict[str, Any]):
             with col2:
                 st.info("""
                 **Acceptable Ranges:**
-                - Mean Amplitude: 60-75
-                - Amplitude Deviation: 0.05-0.15
+                - Mean Amplitude: 5-10
+                - Amplitude Deviation: 0.5-1.0
                 """)
 
         with tabs[1]:
@@ -2506,7 +2506,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
                 # Pace Assessment
                 speed_data = speech_metrics.get("speed", {})
                 words_per_minute = speed_data.get("wpm", 0)
-                pace_score = 1 if 120 <= words_per_minute <= 160 else 0
+                pace_score = 1 if 120 <= words_per_minute <= 180 else 0
                 
                 # QnA Assessment
                 qna_data = concept_data.get("Question Handling", {})
@@ -2649,7 +2649,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
                 with col8:
                     energy_data = speech_metrics.get("energy", {})
                     mean_amplitude = float(energy_data.get("meanAmplitude", 0))
-                    energy_score = 1 if 60 <= mean_amplitude <= 75 else 0
+                    energy_score = 1 if 5 <= mean_amplitude <= 10 else 0  # Changed from 60-75 to 5-10
                     st.markdown("""
                         <div style='background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
                             <h4 style='color: #1f77b4; font-size: 16px;'>⚡ Energy Level</h4>
@@ -3113,7 +3113,7 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         # Pace Assessment data
         speed_data = speech_metrics.get("speed", {})
         words_per_minute = speed_data.get("wpm", 0)
-        pace_score = 1 if 120 <= words_per_minute <= 160 else 0
+        pace_score = 1 if 120 <= words_per_minute <= 180 else 0
 
         # QnA Assessment data
         qna_data = concept_data.get("Question Handling", {})
@@ -3621,7 +3621,7 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         pitch_variation = float(intonation_data.get("pitchVariation", 0))
 
         # Define acceptance criteria for each metric
-        speed_accepted = 120 <= words_per_minute <= 160
+        speed_accepted = 120 <= words_per_minute <= 180
         fillers_accepted = fillers_per_min <= 3
         errors_accepted = errors_per_min <= 1
         pitch_accepted = pitch_variation >= 20
@@ -3632,7 +3632,7 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
             ['Speaking Pace', 
              '✓' if speed_accepted else '✗',
              f'{words_per_minute:.1f} WPM',
-             '120-160 WPM'],
+             '120-180 WPM'],
             ['Filler Words',
              '✓' if fillers_accepted else '✗',
              f'{fillers_per_min:.1f} per min',
@@ -4511,27 +4511,34 @@ def standardize_metric(metric_name: str, value: float) -> float:
 
 def calculate_communication_score(metrics: Dict[str, Any]) -> float:
     speech_metrics = metrics.get("speech_metrics", {})
-    comm_metrics = speech_metrics.get('intonation', {})
-    monotone_score = comm_metrics.get('monotone_score', speech_metrics.get('monotone_score', 0))
-    pitch_variation = comm_metrics.get('pitchVariation', comm_metrics.get('pitch_variation_coeff', 0))
-    direction_changes = comm_metrics.get('direction_changes_per_min', 0)
-    fillers_per_min = speech_metrics.get('fluency', {}).get('fillersPerMin', 0)
-    errors_per_min = speech_metrics.get('fluency', {}).get('errorsPerMin', 0)
-    words_per_minute = speech_metrics.get('speed', {}).get('wpm', 0)
+    
+    # Get metrics with proper fallbacks
+    intonation_data = speech_metrics.get('intonation', {})
+    fluency_data = speech_metrics.get('fluency', {})
+    speed_data = speech_metrics.get('speed', {})
+    
+    # Get values with proper defaults
+    monotone_score = intonation_data.get('monotone_score', 0)
+    pitch_variation = intonation_data.get('pitchVariation', 0)
+    direction_changes = intonation_data.get('direction_changes_per_min', 0)
+    fillers_per_min = float(fluency_data.get('fillersPerMin', 0))
+    errors_per_min = float(fluency_data.get('errorsPerMin', 0))
+    words_per_minute = float(speed_data.get('wpm', 0))
 
-    # More granular scoring for each metric
+    # Binary scoring for each component (0 or 1)
     comm_score_components = [
-        max(0, 1 - (monotone_score / 0.3)) if monotone_score < 0.3 else 0,  # Gradual decrease from 1 to 0
-        min(1, pitch_variation / 20),  # Linear scale up to 20
-        min(1, direction_changes / 300),  # Linear scale up to 300
-        max(0, 1 - (fillers_per_min / 3)),  # Gradual decrease from 1 to 0
-        max(0, 1 - (errors_per_min / 1)),  # Gradual decrease from 1 to 0
-        max(0, 1 - abs(words_per_minute - 140) / 20)  # Peak at 140 WPM, gradual decrease
+        1 if monotone_score < 0.3 else 0,  # Monotone score
+        1 if 20 <= pitch_variation <= 40 else 0,  # Pitch variation
+        1 if direction_changes >= 300 else 0,  # Direction changes
+        1 if fillers_per_min <= 3 else 0,  # Fillers
+        1 if errors_per_min <= 1 else 0,  # Errors
+        1 if 120 <= words_per_minute <= 180 else 0  # Speaking pace
     ]
     
-    # Weight the components based on importance
-    weights = [0.2, 0.2, 0.2, 0.15, 0.15, 0.1]  # Sum to 1
+    # Equal weights for all components
+    weights = [1/6] * 6  # Each component gets equal weight
     weighted_score = sum(score * weight for score, weight in zip(comm_score_components, weights))
+    
     return weighted_score
 
 def calculate_teaching_component_score(metrics: Dict[str, Any]) -> float:
@@ -4587,7 +4594,7 @@ def calculate_hiring_score(metrics: Dict[str, Any]) -> Dict[str, Any]:
         'direction_changes': 1 if comm_metrics.get('direction_changes_per_min', 0) >= 300 else 0,
         'fillers': 1 if speech_metrics.get('fluency', {}).get('fillersPerMin', 0) <= 3 else 0,
         'errors': 1 if speech_metrics.get('fluency', {}).get('errorsPerMin', 0) <= 1 else 0,
-        'pace': 1 if 120 <= speech_metrics.get('speed', {}).get('wpm', 0) <= 160 else 0
+        'pace': 1 if 120 <= speech_metrics.get('speed', {}).get('wpm', 0) <= 180 else 0
     }
     comm_score = sum(comm_scores.values()) / len(comm_scores) * 4  # Convert to 0-4 scale
     
