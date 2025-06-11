@@ -4640,42 +4640,176 @@ def calculate_communication_score(metrics: Dict[str, Any]) -> float:
     errors_per_min = speech_metrics.get('fluency', {}).get('errorsPerMin', 0)
     words_per_minute = speech_metrics.get('speed', {}).get('wpm', 0)
 
+    # More granular scoring for each metric
     comm_score_components = [
-        1 if monotone_score < 0.3 else 0,
-        1 if pitch_variation >= 20 else 0,
-        1 if direction_changes >= 300 else 0,
-        1 if fillers_per_min <= 3 else 0,
-        1 if errors_per_min <= 1 else 0,
-        1 if 120 <= words_per_minute <= 160 else 0
+        max(0, 1 - (monotone_score / 0.3)) if monotone_score < 0.3 else 0,  # Gradual decrease from 1 to 0
+        min(1, pitch_variation / 20),  # Linear scale up to 20
+        min(1, direction_changes / 300),  # Linear scale up to 300
+        max(0, 1 - (fillers_per_min / 3)),  # Gradual decrease from 1 to 0
+        max(0, 1 - (errors_per_min / 1)),  # Gradual decrease from 1 to 0
+        max(0, 1 - abs(words_per_minute - 140) / 20)  # Peak at 140 WPM, gradual decrease
     ]
-    comm_scores = sorted(comm_score_components)
-    comm_score = sum(comm_scores[1:]) / 5  # 0-1 scale
-    return comm_score
+    
+    # Weight the components based on importance
+    weights = [0.2, 0.2, 0.2, 0.15, 0.15, 0.1]  # Sum to 1
+    weighted_score = sum(score * weight for score, weight in zip(comm_score_components, weights))
+    return weighted_score
 
 def calculate_teaching_component_score(metrics: Dict[str, Any]) -> float:
     teaching_data = metrics.get("teaching", {})
     concept_data = teaching_data.get("Concept Assessment", {})
-    teaching_score_components = [
-        1 if concept_data.get('Subject Matter Accuracy', {}).get('Score', 0) == 1 else 0,
-        1 if concept_data.get('Examples and Business Context', {}).get('Score', 0) == 1 else 0,
-        1 if concept_data.get('Question Handling', {}).get('Score', 0) == 1 else 0,
-        1 if concept_data.get('Engagement and Interaction', {}).get('Score', 0) == 1 else 0
-    ]
-    teaching_score = sum(teaching_score_components) / 4  # 0-1 scale
-    return teaching_score
+    
+    # Get detailed scores instead of binary
+    subject_matter = concept_data.get('Subject Matter Accuracy', {}).get('Score', 0)
+    examples = concept_data.get('Examples and Business Context', {}).get('Score', 0)
+    qna = concept_data.get('Question Handling', {}).get('Score', 0)
+    engagement = concept_data.get('Engagement and Interaction', {}).get('Score', 0)
+    
+    # Weight the components
+    weights = [0.3, 0.3, 0.2, 0.2]  # Sum to 1
+    components = [subject_matter, examples, qna, engagement]
+    
+    weighted_score = sum(score * weight for score, weight in zip(components, weights))
+    return weighted_score
 
 def calculate_qna_score(metrics: Dict[str, Any]) -> float:
     teaching_data = metrics.get("teaching", {})
     concept_data = teaching_data.get("Concept Assessment", {})
     qna_data = concept_data.get('Question Handling', {})
     qna_details = qna_data.get('Details', {})
-    qna_score_components = [
-        1 if qna_details.get('ResponseAccuracy', {}).get('Score', 0) == 1 else 0,
-        1 if qna_details.get('ResponseCompleteness', {}).get('Score', 0) == 1 else 0,
-        1 if qna_details.get('ConfidenceLevel', {}).get('Score', 0) == 1 else 0
-    ]
-    qna_score = sum(qna_score_components) / 3  # 0-1 scale
-    return qna_score
+    
+    # Get detailed scores instead of binary
+    response_accuracy = qna_details.get('ResponseAccuracy', {}).get('Score', 0)
+    response_completeness = qna_details.get('ResponseCompleteness', {}).get('Score', 0)
+    confidence_level = qna_details.get('ConfidenceLevel', {}).get('Score', 0)
+    
+    # Weight the components
+    weights = [0.4, 0.4, 0.2]  # Sum to 1
+    components = [response_accuracy, response_completeness, confidence_level]
+    
+    weighted_score = sum(score * weight for score, weight in zip(components, weights))
+    return weighted_score
+
+def calculate_hiring_score(metrics: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Calculate hiring score manually based on metrics.
+    Returns a dictionary with score and assessment details.
+    """
+    # Get all required metrics
+    speech_metrics = metrics.get("speech_metrics", {})
+    teaching_data = metrics.get("teaching", {})
+    concept_data = teaching_data.get("Concept Assessment", {})
+    
+    # 1. Communication Metrics (40% weight)
+    comm_metrics = speech_metrics.get('intonation', {})
+    comm_scores = {
+        'monotone': 1 if comm_metrics.get('monotone_score', 0) < 0.3 else 0,
+        'pitch_variation': 1 if comm_metrics.get('pitchVariation', 0) >= 20 else 0,
+        'direction_changes': 1 if comm_metrics.get('direction_changes_per_min', 0) >= 300 else 0,
+        'fillers': 1 if speech_metrics.get('fluency', {}).get('fillersPerMin', 0) <= 3 else 0,
+        'errors': 1 if speech_metrics.get('fluency', {}).get('errorsPerMin', 0) <= 1 else 0,
+        'pace': 1 if 120 <= speech_metrics.get('speed', {}).get('wpm', 0) <= 160 else 0
+    }
+    comm_score = sum(comm_scores.values()) / len(comm_scores) * 4  # Convert to 0-4 scale
+    
+    # 2. Teaching Metrics (40% weight)
+    teaching_scores = {
+        'content_accuracy': 1 if concept_data.get('Subject Matter Accuracy', {}).get('Score', 0) == 1 else 0,
+        'examples': 1 if concept_data.get('Examples and Business Context', {}).get('Score', 0) == 1 else 0,
+        'qna': 1 if concept_data.get('Question Handling', {}).get('Score', 0) == 1 else 0,
+        'engagement': 1 if concept_data.get('Engagement and Interaction', {}).get('Score', 0) == 1 else 0
+    }
+    teaching_score = sum(teaching_scores.values()) / len(teaching_scores) * 4  # Convert to 0-4 scale
+    
+    # 3. QnA Metrics (20% weight)
+    qna_data = concept_data.get('Question Handling', {})
+    qna_details = qna_data.get('Details', {})
+    qna_scores = {
+        'response_accuracy': 1 if qna_details.get('ResponseAccuracy', {}).get('Score', 0) == 1 else 0,
+        'response_completeness': 1 if qna_details.get('ResponseCompleteness', {}).get('Score', 0) == 1 else 0,
+        'confidence': 1 if qna_details.get('ConfidenceLevel', {}).get('Score', 0) == 1 else 0
+    }
+    qna_score = sum(qna_scores.values()) / len(qna_scores) * 2  # Convert to 0-2 scale
+    
+    # Calculate total score (0-10 scale)
+    total_score = comm_score + teaching_score + qna_score
+    
+    # Generate assessment based on score
+    if total_score >= 8:
+        assessment = "Excellent"
+        color = "#2ecc71"  # Green
+        icon = "✅"
+        description = "Outstanding performance across all metrics"
+    elif total_score >= 6:
+        assessment = "Good"
+        color = "#f1c40f"  # Yellow
+        icon = "⚠️"
+        description = "Solid performance with some areas for improvement"
+    elif total_score >= 4:
+        assessment = "Needs Improvement"
+        color = "#e67e22"  # Orange
+        icon = "⚠️"
+        description = "Several areas need significant improvement"
+    else:
+        assessment = "Poor"
+        color = "#e74c3c"  # Red
+        icon = "❌"
+        description = "Major improvements needed across multiple areas"
+    
+    # Generate reasons based on component scores
+    reasons = []
+    if comm_score >= 3:
+        reasons.append("Strong communication skills")
+    if teaching_score >= 3:
+        reasons.append("Effective teaching methodology")
+    if qna_score >= 1.5:
+        reasons.append("Excellent question handling")
+    
+    # Generate strengths and concerns
+    strengths = []
+    concerns = []
+    
+    # Communication strengths/concerns
+    if comm_scores['monotone'] == 1:
+        strengths.append("Good voice modulation")
+    else:
+        concerns.append("Needs to improve voice modulation")
+    if comm_scores['pace'] == 1:
+        strengths.append("Optimal speaking pace")
+    else:
+        concerns.append("Speaking pace needs adjustment")
+    
+    # Teaching strengths/concerns
+    if teaching_scores['content_accuracy'] == 1:
+        strengths.append("Strong subject matter knowledge")
+    else:
+        concerns.append("Needs to improve content accuracy")
+    if teaching_scores['engagement'] == 1:
+        strengths.append("Good student engagement")
+    else:
+        concerns.append("Needs to improve student engagement")
+    
+    # QnA strengths/concerns
+    if qna_scores['response_accuracy'] == 1:
+        strengths.append("Accurate question responses")
+    else:
+        concerns.append("Needs to improve response accuracy")
+    
+    return {
+        "score": round(total_score, 1),
+        "assessment": assessment,
+        "color": color,
+        "icon": icon,
+        "description": description,
+        "reasons": reasons,
+        "strengths": strengths,
+        "concerns": concerns,
+        "component_scores": {
+            "communication": round(comm_score, 1),
+            "teaching": round(teaching_score, 1),
+            "qna": round(qna_score, 1)
+        }
+    }
 
 def main():
     try:
