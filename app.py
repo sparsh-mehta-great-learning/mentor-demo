@@ -1290,204 +1290,93 @@ class RecommendationGenerator:
                            content_analysis: Dict[str, Any], 
                            progress_callback=None) -> Dict[str, Any]:
         """Generate recommendations with robust JSON handling"""
-        for attempt in range(self.retry_count):
-            try:
-                if progress_callback:
-                    progress_callback(0.2, "Preparing recommendation analysis...")
-                
-                # Validate input data
-                if not isinstance(metrics, dict) or not isinstance(content_analysis, dict):
-                    raise ValueError("Invalid input: metrics and content_analysis must be dictionaries")
-                
-                prompt = self._create_recommendation_prompt(metrics, content_analysis)
-                
-                if progress_callback:
-                    progress_callback(0.5, "Generating recommendations...")
-                
-                response = self.client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": """You are a teaching expert providing actionable recommendations. 
-                        Each improvement must be categorized as one of:
-                        - COMMUNICATION: Related to speaking, pace, tone, clarity, delivery
-                        - TEACHING: Related to explanation, examples, engagement, structure
-                        - TECHNICAL: Related to code, implementation, technical concepts
-                        
-                        Always respond with a valid JSON object containing categorized improvements."""},
-                        {"role": "user", "content": prompt}
-                    ],
-                    response_format={"type": "json_object"}
-                )
-                
-                if progress_callback:
-                    progress_callback(0.8, "Formatting recommendations...")
-                
-                result_text = response.choices[0].message.content.strip()
-                
-                try:
-                    result = json.loads(result_text)
-                    # Ensure improvements are properly formatted
-                    if "improvements" in result:
-                        formatted_improvements = []
-                        for imp in result["improvements"]:
-                            if isinstance(imp, str):
-                                # Default categorization for legacy format
-                                formatted_improvements.append({
-                                    "category": "TECHNICAL",
-                                    "message": imp
-                                })
-                            elif isinstance(imp, dict):
-                                # Ensure proper structure for dict format
-                                formatted_improvements.append({
-                                    "category": imp.get("category", "TECHNICAL"),
-                                    "message": imp.get("message", str(imp))
-                                })
-                        result["improvements"] = formatted_improvements
+        try:
+            if progress_callback:
+                progress_callback(0.2, "Calculating hiring score...")
+            
+            # Calculate hiring score using our new manual function
+            hiring_assessment = calculate_hiring_score(metrics)
+            
+            if progress_callback:
+                progress_callback(0.5, "Generating recommendations...")
+            
+            # Use LLM only for generating the summary and other text-based recommendations
+            prompt = self._create_recommendation_prompt(metrics, content_analysis, hiring_assessment)
+            
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": """You are a teaching expert providing actionable recommendations. 
+                    Each improvement must be categorized as one of:
+                    - COMMUNICATION: Related to speaking, pace, tone, clarity, delivery
+                    - TEACHING: Related to explanation, examples, engagement, structure
+                    - TECHNICAL: Related to code, implementation, technical concepts
                     
-                    # Validate required fields
-                    required_fields = ["summary", "geographyFit", "improvements", "rigor", "profileMatches"]
-                    missing_fields = [field for field in required_fields if field not in result]
-                    if missing_fields:
-                        raise ValueError(f"Missing required fields in response: {', '.join(missing_fields)}")
-                    
-                except json.JSONDecodeError as e:
-                    logger.error(f"Failed to parse JSON response: {e}")
-                    raise ValueError(f"Invalid JSON response from API: {str(e)}")
-                
-                if progress_callback:
-                    progress_callback(1.0, "Recommendations complete!")
-                
-                return result
-                
-            except Exception as e:
-                logger.error(f"Recommendation generation attempt {attempt + 1} failed: {e}")
-                if attempt == self.retry_count - 1:
-                    return {
-                        "summary": "Unable to generate recommendations due to an error",
-                        "geographyFit": "Unknown",
-                        "improvements": [
-                            {
-                                "category": "TECHNICAL",
-                                "message": f"Error generating recommendations: {str(e)}"
-                            }
-                        ],
-                        "rigor": "Undetermined",
-                        "profileMatches": [],
-                        "questionHandling": {
-                            "confidence": "Unable to assess",
-                            "accuracy": "Unable to assess",
-                            "improvements": ["Error in recommendation generation"]
-                        },
-                        "hiringRecommendation": {
-                            "score": 0,
-                            "reasons": ["Error in recommendation generation"],
-                            "strengths": [],
-                            "concerns": ["System error prevented proper evaluation"]
-                        }
+                    Always respond with a valid JSON object containing categorized improvements."""},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            
+            if progress_callback:
+                progress_callback(0.8, "Formatting recommendations...")
+            
+            result = json.loads(response.choices[0].message.content)
+            
+            # Replace the LLM-generated hiring recommendation with our manual one
+            result["hiringRecommendation"] = {
+                "score": hiring_assessment["score"],
+                "reasons": hiring_assessment["reasons"],
+                "strengths": hiring_assessment["strengths"],
+                "concerns": hiring_assessment["concerns"]
+            }
+            
+            if progress_callback:
+                progress_callback(1.0, "Recommendations complete!")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Recommendation generation failed: {e}")
+            return {
+                "summary": "Unable to generate recommendations due to an error",
+                "geographyFit": "Unknown",
+                "improvements": [
+                    {
+                        "category": "TECHNICAL",
+                        "message": f"Error generating recommendations: {str(e)}"
                     }
-                time.sleep(self.retry_delay * (2 ** attempt))
+                ],
+                "rigor": "Undetermined",
+                "profileMatches": [],
+                "questionHandling": {
+                    "confidence": "Unable to assess",
+                    "accuracy": "Unable to assess",
+                    "improvements": ["Error in recommendation generation"]
+                },
+                "hiringRecommendation": {
+                    "score": 0,
+                    "reasons": ["Error in recommendation generation"],
+                    "strengths": [],
+                    "concerns": ["System error prevented proper evaluation"]
+                }
+            }
     
-    def _create_recommendation_prompt(self, metrics: Dict[str, Any], content_analysis: Dict[str, Any]) -> str:
+    def _create_recommendation_prompt(self, metrics: Dict[str, Any], content_analysis: Dict[str, Any], hiring_assessment: Dict[str, Any]) -> str:
         """Create the recommendation prompt with scoring criteria"""
-        speech_metrics = metrics.get("speech_metrics", {})
-        teaching_data = content_analysis.get("teaching", {})
-        concept_data = teaching_data.get("Concept Assessment", {})
-
-        # Extract key communication metrics
-        comm_metrics = speech_metrics.get('intonation', {})
-        monotone_score = comm_metrics.get('monotone_score', speech_metrics.get('monotone_score', 0))
-        pitch_variation = comm_metrics.get('pitchVariation', comm_metrics.get('pitch_variation_coeff', 0))
-        direction_changes = comm_metrics.get('direction_changes_per_min', 0)
-        fillers_per_min = speech_metrics.get('fluency', {}).get('fillersPerMin', 0)
-        errors_per_min = speech_metrics.get('fluency', {}).get('errorsPerMin', 0)
-        words_per_minute = speech_metrics.get('speed', {}).get('wpm', 0)
-
-        # Calculate communication score components
-        comm_score_components = {
-            "monotone": 1 if monotone_score < 0.3 else 0,
-            "pitch_variation": 1 if pitch_variation >= 20 else 0,
-            "direction_changes": 1 if direction_changes >= 300 else 0,
-            "fillers": 1 if fillers_per_min <= 3 else 0,
-            "errors": 1 if errors_per_min <= 1 else 0,
-            "pace": 1 if 120 <= words_per_minute <= 160 else 0
-        }
-        comm_scores = sorted(comm_score_components.values())
-        comm_score = sum(comm_scores[1:]) / 5 * 5  # Convert to 0-5 scale
-
-        comm_metrics_summary = (
-            f"Communication Metrics (Score: {comm_score:.1f}/5):\n"
-            f"- Monotone score: {monotone_score:.2f} (EXCELLENT - below 0.3 is good) {'✓' if comm_score_components['monotone'] else '✗'}\n"
-            f"- Pitch variation: {pitch_variation:.1f}% (GOOD - above 20% is good) {'✓' if comm_score_components['pitch_variation'] else '✗'}\n"
-            f"- Direction changes per minute: {direction_changes:.1f} (GOOD - above 300 is good) {'✓' if comm_score_components['direction_changes'] else '✗'}\n"
-            f"- Fillers per minute: {fillers_per_min:.1f} (GOOD - below 3 is good) {'✓' if comm_score_components['fillers'] else '✗'}\n"
-            f"- Errors per minute: {errors_per_min:.1f} (GOOD - below 1 is good) {'✓' if comm_score_components['errors'] else '✗'}\n"
-            f"- Speaking pace: {words_per_minute:.1f} WPM (GOOD - 120-160 WPM) {'✓' if comm_score_components['pace'] else '✗'}\n"
-        )
-
-        # Calculate teaching score components
-        teaching_score_components = {
-            "content_accuracy": 1 if concept_data.get('Subject Matter Accuracy', {}).get('Score', 0) == 1 else 0,
-            "industry_examples": 1 if concept_data.get('Examples and Business Context', {}).get('Score', 0) == 1 else 0,
-            "qna_accuracy": 1 if concept_data.get('Question Handling', {}).get('Score', 0) == 1 else 0,
-            "engagement": 1 if concept_data.get('Engagement and Interaction', {}).get('Score', 0) == 1 else 0
-        }
-        teaching_score = sum(teaching_score_components.values()) / 4 * 3  # Convert to 0-3 scale
-
-        teaching_metrics_summary = (
-            f"Teaching Metrics (Score: {teaching_score:.1f}/3):\n"
-            f"- Content Accuracy: {'✓' if teaching_score_components['content_accuracy'] else '✗'}\n"
-            f"- Industry Examples: {'✓' if teaching_score_components['industry_examples'] else '✗'}\n"
-            f"- Q&A Accuracy: {'✓' if teaching_score_components['qna_accuracy'] else '✗'}\n"
-            f"- Engagement: {'✓' if teaching_score_components['engagement'] else '✗'}\n"
-        )
-
-        # Calculate question handling score
-        qna_data = concept_data.get('Question Handling', {})
-        qna_details = qna_data.get('Details', {})
-        qna_score_components = {
-            "response_accuracy": 1 if qna_details.get('ResponseAccuracy', {}).get('Score', 0) == 1 else 0,
-            "response_completeness": 1 if qna_details.get('ResponseCompleteness', {}).get('Score', 0) == 1 else 0,
-            "confidence_level": 1 if qna_details.get('ConfidenceLevel', {}).get('Score', 0) == 1 else 0
-        }
-        qna_score = sum(qna_score_components.values()) / 3 * 2  # Convert to 0-2 scale
-
-        qna_metrics_summary = (
-            f"Question Handling (Score: {qna_score:.1f}/2):\n"
-            f"- Response Accuracy: {'✓' if qna_score_components['response_accuracy'] else '✗'}\n"
-            f"- Response Completeness: {'✓' if qna_score_components['response_completeness'] else '✗'}\n"
-            f"- Confidence Level: {'✓' if qna_score_components['confidence_level'] else '✗'}\n"
-        )
-
-        # Calculate total score
-        total_score = comm_score + teaching_score + qna_score
-
-        CRITICAL_INSTRUCTIONS = f"""
-        CRITICAL: The summary and recommendations MUST accurately reflect these metrics and scores:
-        1. Communication Score: {comm_score:.1f}/5
-           - Strong performance in most areas
-           - Only speaking pace needs improvement
-        2. Teaching Score: {teaching_score:.1f}/3
-           - All teaching components are passing
-           - Content accuracy and engagement are strong
-        3. Question Handling Score: {qna_score:.1f}/2
-           - All question handling components are passing
-           - Strong response accuracy and completeness
-        4. Total Score: {total_score:.1f}/10
-
-        The hiring recommendation score MUST be {total_score:.1f}/10, as this is the sum of the component scores.
-        DO NOT adjust this score based on subjective factors.
-        The summary MUST highlight the strong performance in teaching and question handling.
-        """
-
+        # Get component scores from hiring assessment
+        component_scores = hiring_assessment["component_scores"]
+        
         return f"""Based on the following metrics and analysis, provide recommendations:
 
-{comm_metrics_summary}
+Component Scores:
+1. Communication Score: {component_scores['communication']}/4
+2. Teaching Score: {component_scores['teaching']}/4
+3. QnA Score: {component_scores['qna']}/2
+4. Total Score: {hiring_assessment['score']}/10
 
-{teaching_metrics_summary}
-
-{qna_metrics_summary}
-
-{CRITICAL_INSTRUCTIONS}
+Assessment: {hiring_assessment['assessment']}
+Description: {hiring_assessment['description']}
 
 Analyze the teaching style and provide:
 1. A simple and clear summary (3-5 short paragraphs)
@@ -1496,10 +1385,6 @@ Analyze the teaching style and provide:
 4. Profile matching for different learner types (choose ONLY ONE best match)
 5. Overall teaching rigor assessment
 6. Question handling assessment (confidence, accuracy, and improvement areas)
-7. Hiring recommendation with detailed justification:
-   - Score MUST be {total_score:.1f}/10 (sum of component scores)
-   - Provide 3-4 key reasons for the score
-   - List specific strengths and areas for improvement (Use simple language)
 
 Required JSON structure:
 {{
@@ -1517,12 +1402,6 @@ Required JSON structure:
         "improvements": ["List of specific improvements"]
     }},
     "rigor": "Assessment of teaching rigor",
-    "hiringRecommendation": {{
-        "score": {total_score:.1f},
-        "reasons": ["List of 3-4 key reasons for the score"],
-        "strengths": ["List of key strengths that support hiring"],
-        "concerns": ["List of key concerns or areas needing improvement"]
-    }},
     "profileMatches": [
         {{
             "profile": "junior_technical",
