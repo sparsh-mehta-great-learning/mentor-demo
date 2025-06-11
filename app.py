@@ -4780,7 +4780,7 @@ def calculate_hiring_score(metrics: Dict[str, Any]) -> Dict[str, Any]:
         concerns.append("Continue developing communication techniques for even better delivery")
     
     return {
-        "score": round(total_score, 1),
+        "score": round(total_score),
         "assessment": assessment,
         "color": color,
         "icon": icon,
