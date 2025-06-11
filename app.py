@@ -61,28 +61,32 @@ SHEET_ID = "1SXeGOOT8D4wEN0n0CTQWbW0Q7xOSOawBQvFXxKM8hIs"  # <-- Set your Google
 SHEET_NAME = "Report"  # Tab name as provided
 
 METRIC_THRESHOLDS = {
-    'monotone_score': {'excellent': 0.1, 'good': 0.3},
-    'pitch_variation': {'min': 20, 'max': 40},
-    'direction_changes': {'min': 300, 'max': 600},
-    'fillers_per_min': {'excellent': 1, 'good': 3},
-    'errors_per_min': {'excellent': 0.2, 'good': 1},
-    'words_per_minute': {'min': 120, 'max': 180}
+    'monotone_score': {'excellent': 0.1, 'good': 0.3, 'acceptable': 0.5},
+    'pitch_variation': {'excellent': 25, 'good': 20, 'acceptable': 15, 'min': 10},
+    'direction_changes': {'min': 200, 'optimal_min': 300, 'optimal_max': 600, 'max': 800},
+    'fillers_per_min': {'excellent': 1, 'good': 2, 'acceptable': 3, 'max_acceptable': 4},
+    'errors_per_min': {'excellent': 0.2, 'good': 0.5, 'acceptable': 1, 'max_acceptable': 1.5},
+    'words_per_minute': {'optimal_min': 130, 'optimal_max': 150, 'good_min': 120, 'good_max': 160, 'acceptable_min': 110, 'acceptable_max': 170, 'max_acceptable_min': 100, 'max_acceptable_max': 180}
 }
 
-# New metric thresholds with teaching quality weights
+# Balanced metric thresholds with more realistic expectations
+# New Philosophy: Prioritize teaching content and effectiveness over perfect communication
+# A great teacher with minor communication issues should score higher than a poor teacher with perfect speech
 TEACHING_METRIC_WEIGHTS = {
-    'content_accuracy': 0.30,      # Increased from 0.25
-    'industry_examples': 0.15,     # Kept same
-    'qna_accuracy': 0.20,         # Kept same
-    'engagement': 0.10,           # Decreased from 0.15
-    'communication': 0.25         # Kept at 0.25 as requested
+    'content_accuracy': 0.30,      # Strong subject matter knowledge is critical
+    'industry_examples': 0.20,     # Practical application is important  
+    'qna_accuracy': 0.20,         # Question handling shows expertise
+    'engagement': 0.15,           # Student interaction matters
+    'communication': 0.15         # Communication supports but doesn't override content
 }
 
+# More realistic assessment thresholds aligned with new scoring
 TEACHING_ASSESSMENT_THRESHOLDS = {
-    'excellent': 0.9,  # 90% or above
-    'good': 0.7,      # 70% or above
-    'fair': 0.5,      # 50% or above
-    'poor': 0.0       # Below 50%
+    'excellent': 8.5,   # 85% or above (8.5/10)
+    'good': 7.0,       # 70% or above (7.0/10) 
+    'acceptable': 5.5,  # 55% or above (5.5/10)
+    'needs_improvement': 4.0,  # 40% or above (4.0/10)
+    'poor': 0.0        # Below 40%
 }
 
 def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_name=SHEET_NAME):
@@ -131,7 +135,7 @@ def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_
         examples_score = examples.get("Score", "")
         speed_data = speech_metrics.get("speed", {})
         words_per_minute = speed_data.get("wpm", "")
-        pace_score = 1 if 120 <= float(words_per_minute or 0) <= 180 else 0
+        pace_score = 1 if 120 <= float(words_per_minute or 0) <= 160 else 0
         qna_data = concept_data.get("Question Handling", {})
         qna_details = qna_data.get("Details", {})
         response_accuracy = qna_details.get("ResponseAccuracy", {}).get("Score", "")
@@ -170,7 +174,7 @@ def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_
         energy_display_data = audio_features.get("mean_amplitude", ""), audio_features.get("amplitude_deviation", "")
 
         # Calculate acceptance status for communication metrics
-        speed_accepted = 1 if 120 <= float(words_per_minute or 0) <= 180 else 0
+        speed_accepted = 1 if 120 <= float(words_per_minute or 0) <= 160 else 0
         fillers_accepted = 1 if float(fillers_per_min or 0) <= 3 else 0
         errors_accepted = 1 if float(errors_per_min or 0) <= 1 else 0
         pitch_accepted = 1 if float(pitch_variation or 0) >= 20 else 0
@@ -1199,7 +1203,7 @@ Score 0 if ANY of the following are present:
             
             return {
                 "speed": {
-                    "score": 1 if 120 <= words_per_minute <= 180 else 0,
+                    "score": 1 if 120 <= words_per_minute <= 160 else 0,
                     "wpm": words_per_minute,
                     "total_words": words,
                     "duration_minutes": duration_minutes
@@ -1239,10 +1243,10 @@ Score 0 if ANY of the following are present:
                     "mu": audio_features.get("pitch_mean", 0)
                 },
                 "energy": {
-                    "score": 1 if 5 <= audio_features.get("mean_amplitude", 0) <= 10 else 0,  # Changed from 60-75 to 5-10
+                    "score": 1 if 60 <= audio_features.get("mean_amplitude", 0) <= 75 else 0,
                     "meanAmplitude": audio_features.get("mean_amplitude", 0),
                     "amplitudeDeviation": audio_features.get("amplitude_deviation", 0),
-                    "variationScore": 1 if 0.5 <= audio_features.get("amplitude_deviation", 0) <= 1.0 else 0  # Changed from 0.05-0.15 to 0.5-1.0
+                    "variationScore": 1 if 0.05 <= audio_features.get("amplitude_deviation", 0) <= 0.15 else 0
                 }
             }
 
@@ -1877,7 +1881,7 @@ class MentorEvaluator:
             
             return {
                 "speed": {
-                    "score": 1 if 120 <= words_per_minute <= 180 else 0,
+                    "score": 1 if 120 <= words_per_minute <= 160 else 0,
                     "wpm": words_per_minute,
                     "total_words": words,
                     "duration_minutes": duration_minutes
@@ -1917,10 +1921,10 @@ class MentorEvaluator:
                     "mu": audio_features.get("pitch_mean", 0)
                 },
                 "energy": {
-                    "score": 1 if 5 <= audio_features.get("mean_amplitude", 0) <= 10 else 0,  # Changed from 60-75 to 5-10
+                    "score": 1 if 60 <= audio_features.get("mean_amplitude", 0) <= 75 else 0,
                     "meanAmplitude": audio_features.get("mean_amplitude", 0),
                     "amplitudeDeviation": audio_features.get("amplitude_deviation", 0),
-                    "variationScore": 1 if 0.5 <= audio_features.get("amplitude_deviation", 0) <= 1.0 else 0  # Changed from 0.05-0.15 to 0.5-1.0
+                    "variationScore": 1 if 0.05 <= audio_features.get("amplitude_deviation", 0) <= 0.15 else 0
                 }
             }
 
@@ -2032,7 +2036,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
             speech_metrics = evaluation.get("speech_metrics", {})
             speed_data = speech_metrics.get("speed", {})
             words_per_minute = speed_data.get("wpm", 0)
-            speed_score = "✅" if 120 <= words_per_minute <= 180 else "❌"
+            speed_score = "✅" if 120 <= words_per_minute <= 160 else "❌"
             st.markdown("""
                 <div class="metric-box">
                     <h3>Communication</h3>
@@ -2216,7 +2220,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
             words_per_minute = speed_data.get("wpm", 0)
             
             # Calculate overall communication score
-            speed_score = 1 if 120 <= words_per_minute <= 180 else 0
+            speed_score = 1 if 120 <= words_per_minute <= 160 else 0
             fluency_data = speech_metrics.get("fluency", {})
             fillers_per_minute = float(fluency_data.get("fillersPerMin", 0))
             errors_per_minute = float(fluency_data.get("errorsPerMin", 0))
@@ -2234,12 +2238,12 @@ def display_evaluation(evaluation: Dict[str, Any]):
             
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Score", "✅ Pass" if 120 <= words_per_minute <= 180 else "❌ Needs Improvement")
+                st.metric("Score", "✅ Pass" if 120 <= words_per_minute <= 160 else "❌ Needs Improvement")
                 st.metric("Words per Minute", f"{words_per_minute:.1f}")
             with col2:
                 st.info("""
-                **Acceptable Range:** 120-180 WPM
-                - Optimal teaching pace: 130-180 WPM
+                **Acceptable Range:** 120-160 WPM
+                - Optimal teaching pace: 130-160 WPM
                 """)
 
             # Fluency Metrics
@@ -2357,8 +2361,8 @@ def display_evaluation(evaluation: Dict[str, Any]):
             with col2:
                 st.info("""
                 **Acceptable Ranges:**
-                - Mean Amplitude: 5-10
-                - Amplitude Deviation: 0.5-1.0
+                - Mean Amplitude: 60-75
+                - Amplitude Deviation: 0.05-0.15
                 """)
 
         with tabs[1]:
@@ -2506,7 +2510,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
                 # Pace Assessment
                 speed_data = speech_metrics.get("speed", {})
                 words_per_minute = speed_data.get("wpm", 0)
-                pace_score = 1 if 120 <= words_per_minute <= 180 else 0
+                pace_score = 1 if 120 <= words_per_minute <= 160 else 0
                 
                 # QnA Assessment
                 qna_data = concept_data.get("Question Handling", {})
@@ -2649,7 +2653,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
                 with col8:
                     energy_data = speech_metrics.get("energy", {})
                     mean_amplitude = float(energy_data.get("meanAmplitude", 0))
-                    energy_score = 1 if 5 <= mean_amplitude <= 10 else 0  # Changed from 60-75 to 5-10
+                    energy_score = 1 if 60 <= mean_amplitude <= 75 else 0
                     st.markdown("""
                         <div style='background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
                             <h4 style='color: #1f77b4; font-size: 16px;'>⚡ Energy Level</h4>
@@ -3113,7 +3117,7 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         # Pace Assessment data
         speed_data = speech_metrics.get("speed", {})
         words_per_minute = speed_data.get("wpm", 0)
-        pace_score = 1 if 120 <= words_per_minute <= 180 else 0
+        pace_score = 1 if 120 <= words_per_minute <= 160 else 0
 
         # QnA Assessment data
         qna_data = concept_data.get("Question Handling", {})
@@ -3621,7 +3625,7 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         pitch_variation = float(intonation_data.get("pitchVariation", 0))
 
         # Define acceptance criteria for each metric
-        speed_accepted = 120 <= words_per_minute <= 180
+        speed_accepted = 120 <= words_per_minute <= 160
         fillers_accepted = fillers_per_min <= 3
         errors_accepted = errors_per_min <= 1
         pitch_accepted = pitch_variation >= 20
@@ -3632,7 +3636,7 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
             ['Speaking Pace', 
              '✓' if speed_accepted else '✗',
              f'{words_per_minute:.1f} WPM',
-             '120-180 WPM'],
+             '120-160 WPM'],
             ['Filler Words',
              '✓' if fillers_accepted else '✗',
              f'{fillers_per_min:.1f} per min',
@@ -4460,27 +4464,34 @@ def calculate_teaching_score(metrics: Dict[str, Any]) -> float:
     return total_score
 
 def get_teaching_assessment(score: float) -> Dict[str, Any]:
-    """Get teaching assessment based on standardized thresholds"""
-    if score >= TEACHING_ASSESSMENT_THRESHOLDS['excellent'] * 10:
+    """Get teaching assessment based on updated thresholds"""
+    if score >= TEACHING_ASSESSMENT_THRESHOLDS['excellent']:
         return {
             'rating': 'Excellent',
             'color': '#2ecc71',
             'icon': '✅',
             'description': 'Outstanding performance across all metrics'
         }
-    elif score >= TEACHING_ASSESSMENT_THRESHOLDS['good'] * 10:
+    elif score >= TEACHING_ASSESSMENT_THRESHOLDS['good']:
         return {
             'rating': 'Good',
+            'color': '#27ae60',
+            'icon': '✅', 
+            'description': 'Strong performance with minor areas for improvement'
+        }
+    elif score >= TEACHING_ASSESSMENT_THRESHOLDS['acceptable']:
+        return {
+            'rating': 'Acceptable',
             'color': '#f1c40f',
             'icon': '⚠️',
             'description': 'Solid performance with some areas for improvement'
         }
-    elif score >= TEACHING_ASSESSMENT_THRESHOLDS['fair'] * 10:
+    elif score >= TEACHING_ASSESSMENT_THRESHOLDS['needs_improvement']:
         return {
             'rating': 'Needs Improvement',
             'color': '#e67e22',
             'icon': '⚠️',
-            'description': 'Several areas need significant improvement'
+            'description': 'Several areas need improvement but shows potential'
         }
     else:
         return {
@@ -4511,34 +4522,27 @@ def standardize_metric(metric_name: str, value: float) -> float:
 
 def calculate_communication_score(metrics: Dict[str, Any]) -> float:
     speech_metrics = metrics.get("speech_metrics", {})
-    
-    # Get metrics with proper fallbacks
-    intonation_data = speech_metrics.get('intonation', {})
-    fluency_data = speech_metrics.get('fluency', {})
-    speed_data = speech_metrics.get('speed', {})
-    
-    # Get values with proper defaults
-    monotone_score = intonation_data.get('monotone_score', 0)
-    pitch_variation = intonation_data.get('pitchVariation', 0)
-    direction_changes = intonation_data.get('direction_changes_per_min', 0)
-    fillers_per_min = float(fluency_data.get('fillersPerMin', 0))
-    errors_per_min = float(fluency_data.get('errorsPerMin', 0))
-    words_per_minute = float(speed_data.get('wpm', 0))
+    comm_metrics = speech_metrics.get('intonation', {})
+    monotone_score = comm_metrics.get('monotone_score', speech_metrics.get('monotone_score', 0))
+    pitch_variation = comm_metrics.get('pitchVariation', comm_metrics.get('pitch_variation_coeff', 0))
+    direction_changes = comm_metrics.get('direction_changes_per_min', 0)
+    fillers_per_min = speech_metrics.get('fluency', {}).get('fillersPerMin', 0)
+    errors_per_min = speech_metrics.get('fluency', {}).get('errorsPerMin', 0)
+    words_per_minute = speech_metrics.get('speed', {}).get('wpm', 0)
 
-    # Binary scoring for each component (0 or 1)
+    # More granular scoring for each metric
     comm_score_components = [
-        1 if monotone_score < 0.3 else 0,  # Monotone score
-        1 if 20 <= pitch_variation <= 40 else 0,  # Pitch variation
-        1 if direction_changes >= 300 else 0,  # Direction changes
-        1 if fillers_per_min <= 3 else 0,  # Fillers
-        1 if errors_per_min <= 1 else 0,  # Errors
-        1 if 120 <= words_per_minute <= 180 else 0  # Speaking pace
+        max(0, 1 - (monotone_score / 0.3)) if monotone_score < 0.3 else 0,  # Gradual decrease from 1 to 0
+        min(1, pitch_variation / 20),  # Linear scale up to 20
+        min(1, direction_changes / 300),  # Linear scale up to 300
+        max(0, 1 - (fillers_per_min / 3)),  # Gradual decrease from 1 to 0
+        max(0, 1 - (errors_per_min / 1)),  # Gradual decrease from 1 to 0
+        max(0, 1 - abs(words_per_minute - 140) / 20)  # Peak at 140 WPM, gradual decrease
     ]
     
-    # Equal weights for all components
-    weights = [1/6] * 6  # Each component gets equal weight
+    # Weight the components based on importance
+    weights = [0.2, 0.2, 0.2, 0.15, 0.15, 0.1]  # Sum to 1
     weighted_score = sum(score * weight for score, weight in zip(comm_score_components, weights))
-    
     return weighted_score
 
 def calculate_teaching_component_score(metrics: Dict[str, Any]) -> float:
@@ -4578,108 +4582,156 @@ def calculate_qna_score(metrics: Dict[str, Any]) -> float:
 
 def calculate_hiring_score(metrics: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Calculate hiring score manually based on metrics.
+    Calculate hiring score manually based on metrics with more balanced and fair scoring.
     Returns a dictionary with score and assessment details.
     """
     # Get all required metrics
     speech_metrics = metrics.get("speech_metrics", {})
     teaching_data = metrics.get("teaching", {})
     concept_data = teaching_data.get("Concept Assessment", {})
+    audio_features = metrics.get("audio_features", {})
     
-    # 1. Communication Metrics (40% weight)
-    comm_metrics = speech_metrics.get('intonation', {})
+    # 1. Communication Metrics (30% weight) - Reduced from 40% to be less punitive
+    # Use more nuanced scoring for communication metrics
+    wpm = speech_metrics.get('speed', {}).get('wpm', 0)
+    fillers_per_min = speech_metrics.get('fluency', {}).get('fillersPerMin', 0)
+    errors_per_min = speech_metrics.get('fluency', {}).get('errorsPerMin', 0)
+    pitch_variation = speech_metrics.get('intonation', {}).get('pitchVariation', 0)
+    monotone_score = audio_features.get('monotone_score', 0)
+    
+    # More graduated scoring instead of binary
     comm_scores = {
-        'monotone': 1 if comm_metrics.get('monotone_score', 0) < 0.3 else 0,
-        'pitch_variation': 1 if comm_metrics.get('pitchVariation', 0) >= 20 else 0,
-        'direction_changes': 1 if comm_metrics.get('direction_changes_per_min', 0) >= 300 else 0,
-        'fillers': 1 if speech_metrics.get('fluency', {}).get('fillersPerMin', 0) <= 3 else 0,
-        'errors': 1 if speech_metrics.get('fluency', {}).get('errorsPerMin', 0) <= 1 else 0,
-        'pace': 1 if 120 <= speech_metrics.get('speed', {}).get('wpm', 0) <= 180 else 0
+        'monotone': 1.0 if monotone_score < 0.1 else 0.8 if monotone_score < 0.3 else 0.6 if monotone_score < 0.5 else 0.3,
+        'pitch_variation': 1.0 if pitch_variation >= 25 else 0.8 if pitch_variation >= 20 else 0.6 if pitch_variation >= 15 else 0.3,
+        'fillers': 1.0 if fillers_per_min <= 1 else 0.9 if fillers_per_min <= 2 else 0.7 if fillers_per_min <= 3 else 0.5 if fillers_per_min <= 4 else 0.3,
+        'errors': 1.0 if errors_per_min <= 0.2 else 0.9 if errors_per_min <= 0.5 else 0.8 if errors_per_min <= 1 else 0.6 if errors_per_min <= 1.5 else 0.3,
+        'pace': 1.0 if 130 <= wpm <= 150 else 0.9 if 120 <= wpm <= 160 else 0.7 if 110 <= wpm <= 170 else 0.5 if 100 <= wpm <= 180 else 0.3
     }
-    comm_score = sum(comm_scores.values()) / len(comm_scores) * 4  # Convert to 0-4 scale
+    comm_score = sum(comm_scores.values()) / len(comm_scores) * 3  # Convert to 0-3 scale
     
-    # 2. Teaching Metrics (40% weight)
+    # 2. Teaching Metrics (50% weight) - Increased from 40% as this is most important
     teaching_scores = {
         'content_accuracy': 1 if concept_data.get('Subject Matter Accuracy', {}).get('Score', 0) == 1 else 0,
         'examples': 1 if concept_data.get('Examples and Business Context', {}).get('Score', 0) == 1 else 0,
-        'qna': 1 if concept_data.get('Question Handling', {}).get('Score', 0) == 1 else 0,
-        'engagement': 1 if concept_data.get('Engagement and Interaction', {}).get('Score', 0) == 1 else 0
+        'storytelling': 1 if concept_data.get('Cohesive Storytelling', {}).get('Score', 0) == 1 else 0,
+        'engagement': 1 if concept_data.get('Engagement and Interaction', {}).get('Score', 0) == 1 else 0,
+        'professional_tone': 1 if concept_data.get('Professional Tone', {}).get('Score', 0) == 1 else 0
     }
-    teaching_score = sum(teaching_scores.values()) / len(teaching_scores) * 4  # Convert to 0-4 scale
+    teaching_score = sum(teaching_scores.values()) / len(teaching_scores) * 5  # Convert to 0-5 scale
     
-    # 3. QnA Metrics (20% weight)
+    # 3. QnA Metrics (20% weight) - Same weight but more forgiving
     qna_data = concept_data.get('Question Handling', {})
     qna_details = qna_data.get('Details', {})
     qna_scores = {
-        'response_accuracy': 1 if qna_details.get('ResponseAccuracy', {}).get('Score', 0) == 1 else 0,
-        'response_completeness': 1 if qna_details.get('ResponseCompleteness', {}).get('Score', 0) == 1 else 0,
-        'confidence': 1 if qna_details.get('ConfidenceLevel', {}).get('Score', 0) == 1 else 0
+        'response_accuracy': 1 if qna_details.get('ResponseAccuracy', {}).get('Score', 0) == 1 else 0.5,  # Partial credit
+        'response_completeness': 1 if qna_details.get('ResponseCompleteness', {}).get('Score', 0) == 1 else 0.5,  # Partial credit
+        'confidence': 1 if qna_details.get('ConfidenceLevel', {}).get('Score', 0) == 1 else 0.7  # More forgiving
     }
     qna_score = sum(qna_scores.values()) / len(qna_scores) * 2  # Convert to 0-2 scale
     
     # Calculate total score (0-10 scale)
     total_score = comm_score + teaching_score + qna_score
     
-    # Generate assessment based on score
-    if total_score >= 8:
+    # More nuanced assessment bands
+    if total_score >= 8.5:
         assessment = "Excellent"
         color = "#2ecc71"  # Green
         icon = "✅"
         description = "Outstanding performance across all metrics"
-    elif total_score >= 6:
+    elif total_score >= 7.0:
         assessment = "Good"
+        color = "#27ae60"  # Darker green
+        icon = "✅"
+        description = "Strong performance with minor areas for improvement"
+    elif total_score >= 5.5:
+        assessment = "Acceptable"
         color = "#f1c40f"  # Yellow
         icon = "⚠️"
         description = "Solid performance with some areas for improvement"
-    elif total_score >= 4:
+    elif total_score >= 4.0:
         assessment = "Needs Improvement"
         color = "#e67e22"  # Orange
         icon = "⚠️"
-        description = "Several areas need significant improvement"
+        description = "Several areas need improvement but shows potential"
     else:
         assessment = "Poor"
         color = "#e74c3c"  # Red
         icon = "❌"
         description = "Major improvements needed across multiple areas"
     
-    # Generate reasons based on component scores
+    # Generate reasons based on component scores with more positive framing
     reasons = []
-    if comm_score >= 3:
-        reasons.append("Strong communication skills")
-    if teaching_score >= 3:
-        reasons.append("Effective teaching methodology")
-    if qna_score >= 1.5:
-        reasons.append("Excellent question handling")
+    if teaching_score >= 4.0:  # 80% of teaching metrics passed
+        reasons.append("Strong teaching methodology and content delivery")
+    if comm_score >= 2.4:  # 80% of communication metrics
+        reasons.append("Effective communication skills")
+    elif comm_score >= 1.8:  # 60% of communication metrics  
+        reasons.append("Good communication with room for refinement")
+    if qna_score >= 1.6:  # 80% of QnA metrics
+        reasons.append("Excellent question handling capabilities")
     
-    # Generate strengths and concerns
+    # If overall score is good but individual components have issues
+    if total_score >= 6.0 and len(reasons) < 2:
+        reasons.append("Demonstrates core teaching competencies")
+    
+    # Generate strengths and concerns with more balanced view
     strengths = []
     concerns = []
     
-    # Communication strengths/concerns
-    if comm_scores['monotone'] == 1:
-        strengths.append("Good voice modulation")
-    else:
-        concerns.append("Needs to improve voice modulation")
-    if comm_scores['pace'] == 1:
-        strengths.append("Optimal speaking pace")
-    else:
-        concerns.append("Speaking pace needs adjustment")
-    
-    # Teaching strengths/concerns
+    # Teaching strengths (prioritize since it's most important)
     if teaching_scores['content_accuracy'] == 1:
-        strengths.append("Strong subject matter knowledge")
-    else:
-        concerns.append("Needs to improve content accuracy")
+        strengths.append("Demonstrates strong subject matter expertise")
+    if teaching_scores['examples'] == 1:
+        strengths.append("Effectively uses practical examples and business context")
     if teaching_scores['engagement'] == 1:
-        strengths.append("Good student engagement")
+        strengths.append("Shows good student engagement and interaction")
+    if teaching_scores['storytelling'] == 1:
+        strengths.append("Maintains cohesive and structured delivery")
+    if teaching_scores['professional_tone'] == 1:
+        strengths.append("Maintains professional and appropriate tone")
+    
+    # Communication strengths/concerns with graduated assessment
+    if comm_scores['fillers'] >= 0.7:
+        strengths.append("Maintains good speech fluency")
+    elif comm_scores['fillers'] < 0.5:
+        concerns.append("Could reduce use of filler words")
+        
+    if comm_scores['errors'] >= 0.8:
+        strengths.append("Clear and accurate speech delivery")
+    elif comm_scores['errors'] < 0.6:
+        concerns.append("Could improve speech accuracy")
+        
+    if comm_scores['pace'] >= 0.7:
+        if comm_scores['pace'] == 1.0:
+            strengths.append("Excellent speaking pace for learning")
+        else:
+            strengths.append("Generally good speaking pace")
     else:
-        concerns.append("Needs to improve student engagement")
+        if wpm > 160:
+            concerns.append("Speaking pace could be slower for better comprehension")
+        else:
+            concerns.append("Speaking pace needs adjustment")
+    
+    if comm_scores['pitch_variation'] >= 0.8:
+        strengths.append("Good voice modulation and variety")
+    elif comm_scores['pitch_variation'] < 0.6:
+        concerns.append("Could improve voice modulation for engagement")
     
     # QnA strengths/concerns
     if qna_scores['response_accuracy'] == 1:
-        strengths.append("Accurate question responses")
-    else:
-        concerns.append("Needs to improve response accuracy")
+        strengths.append("Provides accurate and reliable responses to questions")
+    if qna_scores['response_completeness'] == 1:
+        strengths.append("Gives comprehensive answers to student questions")
+    if qna_scores['confidence'] >= 0.8:
+        strengths.append("Shows confidence in handling questions")
+    
+    # Ensure we have at least some positive feedback if teaching is strong
+    if len(strengths) == 0 and teaching_score >= 3.0:
+        strengths.append("Shows solid teaching fundamentals")
+        
+    # Ensure concerns are constructive, not just negative
+    if len(concerns) == 0 and total_score < 8.0:
+        concerns.append("Continue developing communication techniques for even better delivery")
     
     return {
         "score": round(total_score, 1),
@@ -4860,4 +4912,3 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
         logger.error(f"Application error: {e}", exc_info=True)
-    
