@@ -1658,16 +1658,22 @@ class MentorEvaluator:
                     tracker.update(0.8, "Analyzing teaching content")
                     content_analysis = self.content_analyzer.analyze_content(transcript)
                     
-                    # Step 6: Generate recommendations
+                    # Step 6: Evaluate speech metrics (needed for recommendations)
+                    tracker.update(0.85, "Analyzing speech patterns")
+                    speech_metrics = self._evaluate_speech_metrics(transcript, audio_features)
+                    
+                    # Step 7: Generate recommendations with complete data
                     tracker.update(0.9, "Generating recommendations")
+                    complete_metrics = {
+                        "audio_features": audio_features,
+                        "speech_metrics": speech_metrics,
+                        "teaching": content_analysis
+                    }
                     recommendations = self.recommendation_generator.generate_recommendations(
-                        audio_features,
+                        complete_metrics,
                         content_analysis
                     )
                     tracker.next_step()
-
-                    # Add speech metrics evaluation
-                    speech_metrics = self._evaluate_speech_metrics(transcript, audio_features)
                     
                     # Clear progress indicators
                     status.empty()
@@ -4585,11 +4591,19 @@ def calculate_hiring_score(metrics: Dict[str, Any]) -> Dict[str, Any]:
     Calculate hiring score manually based on metrics with more balanced and fair scoring.
     Returns a dictionary with score and assessment details.
     """
+    # Debug logging to understand the data structure being passed
+    logger.info(f"Received metrics structure keys: {list(metrics.keys())}")
+    
     # Get all required metrics
     speech_metrics = metrics.get("speech_metrics", {})
     teaching_data = metrics.get("teaching", {})
     concept_data = teaching_data.get("Concept Assessment", {})
     audio_features = metrics.get("audio_features", {})
+    
+    # Debug log the sub-structure keys
+    logger.info(f"Speech metrics keys: {list(speech_metrics.keys())}")
+    logger.info(f"Teaching data keys: {list(teaching_data.keys())}")
+    logger.info(f"Audio features keys: {list(audio_features.keys())}")
     
     # 1. Communication Metrics (40% weight) - Restored original weight
     # Use more nuanced scoring for communication metrics
@@ -4612,6 +4626,10 @@ def calculate_hiring_score(metrics: Dict[str, Any]) -> Dict[str, Any]:
     }
     comm_score = sum(comm_scores.values()) / len(comm_scores) * 4  # Convert to 0-4 scale
     
+    # Additional debug logging to identify calculation issues
+    logger.info(f"Detailed comm scores: monotone({monotone_score})={comm_scores['monotone']}, pitch({pitch_variation})={comm_scores['pitch_variation']}, fillers({fillers_per_min})={comm_scores['fillers']}, errors({errors_per_min})={comm_scores['errors']}, pace({wpm})={comm_scores['pace']}")
+    logger.info(f"Sum of comm scores: {sum(comm_scores.values())}, Average: {sum(comm_scores.values()) / len(comm_scores)}, Final comm_score: {comm_score}")
+    
     # Debug logging
     logger.info(f"Individual communication scores: {comm_scores}")
     logger.info(f"Total communication score: {comm_score}/4")
@@ -4626,9 +4644,15 @@ def calculate_hiring_score(metrics: Dict[str, Any]) -> Dict[str, Any]:
     }
     teaching_score = sum(teaching_scores.values()) / len(teaching_scores) * 4  # Convert to 0-4 scale
     
-    # Debug logging
+    # Debug logging with raw scores from concept_data
+    logger.info(f"Raw teaching data:")
+    logger.info(f"  Subject Matter Accuracy Score: {concept_data.get('Subject Matter Accuracy', {}).get('Score', 'NOT_FOUND')}")
+    logger.info(f"  Examples and Business Context Score: {concept_data.get('Examples and Business Context', {}).get('Score', 'NOT_FOUND')}")
+    logger.info(f"  Cohesive Storytelling Score: {concept_data.get('Cohesive Storytelling', {}).get('Score', 'NOT_FOUND')}")
+    logger.info(f"  Engagement and Interaction Score: {concept_data.get('Engagement and Interaction', {}).get('Score', 'NOT_FOUND')}")
+    logger.info(f"  Professional Tone Score: {concept_data.get('Professional Tone', {}).get('Score', 'NOT_FOUND')}")
     logger.info(f"Teaching scores: {teaching_scores}")
-    logger.info(f"Total teaching score: {teaching_score}/4")
+    logger.info(f"Sum: {sum(teaching_scores.values())}, Avg: {sum(teaching_scores.values()) / len(teaching_scores)}, Final teaching score: {teaching_score}/4")
     
     # 3. QnA Metrics (20% weight) - Same weight but more forgiving
     qna_data = concept_data.get('Question Handling', {})
@@ -4640,9 +4664,13 @@ def calculate_hiring_score(metrics: Dict[str, Any]) -> Dict[str, Any]:
     }
     qna_score = sum(qna_scores.values()) / len(qna_scores) * 2  # Convert to 0-2 scale
     
-    # Debug logging
+    # Debug logging with raw QnA data
+    logger.info(f"Raw QnA data:")
+    logger.info(f"  ResponseAccuracy Score: {qna_details.get('ResponseAccuracy', {}).get('Score', 'NOT_FOUND')}")
+    logger.info(f"  ResponseCompleteness Score: {qna_details.get('ResponseCompleteness', {}).get('Score', 'NOT_FOUND')}")
+    logger.info(f"  ConfidenceLevel Score: {qna_details.get('ConfidenceLevel', {}).get('Score', 'NOT_FOUND')}")
     logger.info(f"QnA scores: {qna_scores}")
-    logger.info(f"Total QnA score: {qna_score}/2")
+    logger.info(f"Sum: {sum(qna_scores.values())}, Avg: {sum(qna_scores.values()) / len(qna_scores)}, Final QnA score: {qna_score}/2")
     
     # Calculate total score (0-10 scale)
     total_score = comm_score + teaching_score + qna_score
