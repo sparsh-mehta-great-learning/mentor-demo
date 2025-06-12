@@ -4528,46 +4528,119 @@ def standardize_metric(metric_name: str, value: float) -> float:
         return max(0, 1 - (value - max_val) / max_val)
 
 def calculate_communication_score(metrics: Dict[str, Any]) -> float:
-    speech_metrics = metrics.get("speech_metrics", {})
-    comm_metrics = speech_metrics.get('intonation', {})
-    monotone_score = comm_metrics.get('monotone_score', speech_metrics.get('monotone_score', 0))
-    pitch_variation = comm_metrics.get('pitchVariation', comm_metrics.get('pitch_variation_coeff', 0))
-    direction_changes = comm_metrics.get('direction_changes_per_min', 0)
-    fillers_per_min = speech_metrics.get('fluency', {}).get('fillersPerMin', 0)
-    errors_per_min = speech_metrics.get('fluency', {}).get('errorsPerMin', 0)
-    words_per_minute = speech_metrics.get('speed', {}).get('wpm', 0)
-
-    # More granular scoring for each metric
-    comm_score_components = [
-        max(0, 1 - (monotone_score / 0.3)) if monotone_score < 0.3 else 0,  # Gradual decrease from 1 to 0
-        min(1, pitch_variation / 20),  # Linear scale up to 20
-        min(1, direction_changes / 300),  # Linear scale up to 300
-        max(0, 1 - (fillers_per_min / 3)),  # Gradual decrease from 1 to 0
-        max(0, 1 - (errors_per_min / 1)),  # Gradual decrease from 1 to 0
-        max(0, 1 - abs(words_per_minute - 140) / 20)  # Peak at 140 WPM, gradual decrease
-    ]
-    
-    # Weight the components based on importance
-    weights = [0.2, 0.2, 0.2, 0.15, 0.15, 0.1]  # Sum to 1
-    weighted_score = sum(score * weight for score, weight in zip(comm_score_components, weights))
-    return weighted_score
+    """Calculate communication score with improved alignment to human feedback"""
+    try:
+        speech_metrics = metrics.get("speech_metrics", {})
+        comm_metrics = speech_metrics.get('intonation', {})
+        
+        # Get all required metrics
+        monotone_score = comm_metrics.get('monotone_score', speech_metrics.get('monotone_score', 0))
+        pitch_variation = comm_metrics.get('pitchVariation', comm_metrics.get('pitch_variation_coeff', 0))
+        direction_changes = comm_metrics.get('direction_changes_per_min', 0)
+        fillers_per_min = speech_metrics.get('fluency', {}).get('fillersPerMin', 0)
+        errors_per_min = speech_metrics.get('fluency', {}).get('errorsPerMin', 0)
+        words_per_minute = speech_metrics.get('speed', {}).get('wpm', 0)
+        
+        # More nuanced scoring for each metric
+        comm_score_components = [
+            # Monotone score (voice variety)
+            max(0, 1 - (monotone_score / 0.25)) if monotone_score < 0.25 else 0,
+            
+            # Pitch variation (voice modulation)
+            min(1, pitch_variation / 25),  # Linear scale up to 25%
+            
+            # Direction changes (intonation patterns)
+            min(1, direction_changes / 350),  # Linear scale up to 350 changes/min
+            
+            # Filler words (speech clarity)
+            max(0, 1 - (fillers_per_min / 3.5)),  # Gradual decrease from 1 to 0
+            
+            # Speech errors (accuracy)
+            max(0, 1 - (errors_per_min / 1.2)),  # Gradual decrease from 1 to 0
+            
+            # Speaking pace (optimal range)
+            max(0, 1 - abs(words_per_minute - 145) / 35)  # Peak at 145 WPM, gradual decrease
+        ]
+        
+        # Adjusted weights based on human feedback
+        weights = [0.2, 0.2, 0.15, 0.15, 0.15, 0.15]  # Sum to 1
+        
+        # Calculate weighted score
+        weighted_score = sum(score * weight for score, weight in zip(comm_score_components, weights))
+        
+        # Convert to 0-4 scale
+        final_score = weighted_score * 4
+        
+        # Log detailed scoring for debugging
+        logger.info(f"Communication score components:")
+        logger.info(f"  Monotone: {comm_score_components[0]:.2f} (score: {monotone_score:.2f})")
+        logger.info(f"  Pitch Variation: {comm_score_components[1]:.2f} (variation: {pitch_variation:.2f}%)")
+        logger.info(f"  Direction Changes: {comm_score_components[2]:.2f} (changes: {direction_changes:.2f}/min)")
+        logger.info(f"  Fillers: {comm_score_components[3]:.2f} (fillers: {fillers_per_min:.2f}/min)")
+        logger.info(f"  Errors: {comm_score_components[4]:.2f} (errors: {errors_per_min:.2f}/min)")
+        logger.info(f"  Pace: {comm_score_components[5]:.2f} (WPM: {words_per_minute:.2f})")
+        logger.info(f"Final communication score: {final_score:.2f}/4")
+        
+        return final_score
+        
+    except Exception as e:
+        logger.error(f"Error in communication score calculation: {e}")
+        return 0.0
 
 def calculate_teaching_component_score(metrics: Dict[str, Any]) -> float:
-    teaching_data = metrics.get("teaching", {})
-    concept_data = teaching_data.get("Concept Assessment", {})
-    
-    # Get detailed scores instead of binary
-    subject_matter = concept_data.get('Subject Matter Accuracy', {}).get('Score', 0)
-    examples = concept_data.get('Examples and Business Context', {}).get('Score', 0)
-    qna = concept_data.get('Question Handling', {}).get('Score', 0)
-    engagement = concept_data.get('Engagement and Interaction', {}).get('Score', 0)
-    
-    # Weight the components
-    weights = [0.3, 0.3, 0.2, 0.2]  # Sum to 1
-    components = [subject_matter, examples, qna, engagement]
-    
-    weighted_score = sum(score * weight for score, weight in zip(components, weights))
-    return weighted_score
+    """Calculate teaching component score with improved alignment to human feedback"""
+    try:
+        teaching_data = metrics.get("teaching", {})
+        concept_data = teaching_data.get("Concept Assessment", {})
+        
+        # Get all teaching metrics
+        content_accuracy = concept_data.get('Subject Matter Accuracy', {}).get('Score', 0)
+        examples = concept_data.get('Examples and Business Context', {}).get('Score', 0)
+        storytelling = concept_data.get('Cohesive Storytelling', {}).get('Score', 0)
+        engagement = concept_data.get('Engagement and Interaction', {}).get('Score', 0)
+        professional_tone = concept_data.get('Professional Tone', {}).get('Score', 0)
+        
+        # More nuanced scoring for each component
+        teaching_scores = {
+            'content_accuracy': 1.0 if content_accuracy == 1 else 0.5,  # Partial credit for near-misses
+            'examples': 1.0 if examples == 1 else 0.5,  # Partial credit for some examples
+            'storytelling': 1.0 if storytelling == 1 else 0.7,  # More forgiving for structure
+            'engagement': 1.0 if engagement == 1 else 0.6,  # Partial credit for basic engagement
+            'professional_tone': 1.0 if professional_tone == 1 else 0.8  # Most forgiving for tone
+        }
+        
+        # Adjusted weights based on human feedback
+        weights = {
+            'content_accuracy': 0.25,  # Most important
+            'examples': 0.20,         # Very important
+            'storytelling': 0.20,     # Very important
+            'engagement': 0.20,       # Very important
+            'professional_tone': 0.15  # Important but more flexible
+        }
+        
+        # Calculate weighted score
+        weighted_score = sum(
+            teaching_scores[component] * weights[component]
+            for component in teaching_scores
+        )
+        
+        # Convert to 0-4 scale
+        final_score = weighted_score * 4
+        
+        # Log detailed scoring for debugging
+        logger.info(f"Teaching score components:")
+        logger.info(f"  Content Accuracy: {teaching_scores['content_accuracy']:.2f} (raw: {content_accuracy})")
+        logger.info(f"  Examples: {teaching_scores['examples']:.2f} (raw: {examples})")
+        logger.info(f"  Storytelling: {teaching_scores['storytelling']:.2f} (raw: {storytelling})")
+        logger.info(f"  Engagement: {teaching_scores['engagement']:.2f} (raw: {engagement})")
+        logger.info(f"  Professional Tone: {teaching_scores['professional_tone']:.2f} (raw: {professional_tone})")
+        logger.info(f"Final teaching score: {final_score:.2f}/4")
+        
+        return final_score
+        
+    except Exception as e:
+        logger.error(f"Error in teaching score calculation: {e}")
+        return 0.0
 
 def calculate_qna_score(metrics: Dict[str, Any]) -> float:
     teaching_data = metrics.get("teaching", {})
@@ -4588,219 +4661,159 @@ def calculate_qna_score(metrics: Dict[str, Any]) -> float:
     return weighted_score
 
 def calculate_hiring_score(metrics: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Calculate hiring score manually based on metrics with more balanced and fair scoring.
-    Returns a dictionary with score and assessment details.
-    """
-    # Debug logging to understand the data structure being passed
-    logger.info(f"Received metrics structure keys: {list(metrics.keys())}")
-    
-    # Get all required metrics
-    speech_metrics = metrics.get("speech_metrics", {})
-    teaching_data = metrics.get("teaching", {})
-    concept_data = teaching_data.get("Concept Assessment", {})
-    audio_features = metrics.get("audio_features", {})
-    
-    # Debug log the sub-structure keys
-    logger.info(f"Speech metrics keys: {list(speech_metrics.keys())}")
-    logger.info(f"Teaching data keys: {list(teaching_data.keys())}")
-    logger.info(f"Audio features keys: {list(audio_features.keys())}")
-    
-    # 1. Communication Metrics (40% weight) - Restored original weight
-    # Use more nuanced scoring for communication metrics
-    wpm = speech_metrics.get('speed', {}).get('wpm', 0)
-    fillers_per_min = speech_metrics.get('fluency', {}).get('fillersPerMin', 0)
-    errors_per_min = speech_metrics.get('fluency', {}).get('errorsPerMin', 0)
-    pitch_variation = speech_metrics.get('intonation', {}).get('pitchVariation', 0)
-    monotone_score = audio_features.get('monotone_score', 0)
-    
-    # Debug logging to see what values we're getting
-    logger.info(f"Communication metrics - WPM: {wpm}, Fillers: {fillers_per_min}, Errors: {errors_per_min}, Pitch: {pitch_variation}, Monotone: {monotone_score}")
-    
-    # More graduated scoring instead of binary with expanded WPM range
-    comm_scores = {
-        'monotone': 1.0 if monotone_score < 0.1 else 0.8 if monotone_score < 0.3 else 0.6 if monotone_score < 0.5 else 0.3,
-        'pitch_variation': 1.0 if pitch_variation >= 25 else 0.8 if pitch_variation >= 20 else 0.6 if pitch_variation >= 15 else 0.3,
-        'fillers': 1.0 if fillers_per_min <= 1 else 0.9 if fillers_per_min <= 2 else 0.7 if fillers_per_min <= 3 else 0.5 if fillers_per_min <= 4 else 0.3,
-        'errors': 1.0 if errors_per_min <= 0.2 else 0.9 if errors_per_min <= 0.5 else 0.8 if errors_per_min <= 1 else 0.6 if errors_per_min <= 1.5 else 0.3,
-        'pace': 1.0 if 130 <= wpm <= 150 else 0.9 if 120 <= wpm <= 180 else 0.7 if 110 <= wpm <= 190 else 0.5 if 100 <= wpm <= 200 else 0.3
-    }
-    comm_score = sum(comm_scores.values()) / len(comm_scores) * 4  # Convert to 0-4 scale
-    
-    # Additional debug logging to identify calculation issues
-    logger.info(f"Detailed comm scores: monotone({monotone_score})={comm_scores['monotone']}, pitch({pitch_variation})={comm_scores['pitch_variation']}, fillers({fillers_per_min})={comm_scores['fillers']}, errors({errors_per_min})={comm_scores['errors']}, pace({wpm})={comm_scores['pace']}")
-    logger.info(f"Sum of comm scores: {sum(comm_scores.values())}, Average: {sum(comm_scores.values()) / len(comm_scores)}, Final comm_score: {comm_score}")
-    
-    # Debug logging
-    logger.info(f"Individual communication scores: {comm_scores}")
-    logger.info(f"Total communication score: {comm_score}/4")
-    
-    # 2. Teaching Metrics (40% weight) - Restored original weight
-    teaching_scores = {
-        'content_accuracy': 1 if concept_data.get('Subject Matter Accuracy', {}).get('Score', 0) == 1 else 0,
-        'examples': 1 if concept_data.get('Examples and Business Context', {}).get('Score', 0) == 1 else 0,
-        'storytelling': 1 if concept_data.get('Cohesive Storytelling', {}).get('Score', 0) == 1 else 0,
-        'engagement': 1 if concept_data.get('Engagement and Interaction', {}).get('Score', 0) == 1 else 0,
-        'professional_tone': 1 if concept_data.get('Professional Tone', {}).get('Score', 0) == 1 else 0
-    }
-    teaching_score = sum(teaching_scores.values()) / len(teaching_scores) * 4  # Convert to 0-4 scale
-    
-    # Debug logging with raw scores from concept_data
-    logger.info(f"Raw teaching data:")
-    logger.info(f"  Subject Matter Accuracy Score: {concept_data.get('Subject Matter Accuracy', {}).get('Score', 'NOT_FOUND')}")
-    logger.info(f"  Examples and Business Context Score: {concept_data.get('Examples and Business Context', {}).get('Score', 'NOT_FOUND')}")
-    logger.info(f"  Cohesive Storytelling Score: {concept_data.get('Cohesive Storytelling', {}).get('Score', 'NOT_FOUND')}")
-    logger.info(f"  Engagement and Interaction Score: {concept_data.get('Engagement and Interaction', {}).get('Score', 'NOT_FOUND')}")
-    logger.info(f"  Professional Tone Score: {concept_data.get('Professional Tone', {}).get('Score', 'NOT_FOUND')}")
-    logger.info(f"Teaching scores: {teaching_scores}")
-    logger.info(f"Sum: {sum(teaching_scores.values())}, Avg: {sum(teaching_scores.values()) / len(teaching_scores)}, Final teaching score: {teaching_score}/4")
-    
-    # 3. QnA Metrics (20% weight) - Same weight but more forgiving
-    qna_data = concept_data.get('Question Handling', {})
-    qna_details = qna_data.get('Details', {})
-    qna_scores = {
-        'response_accuracy': 1 if qna_details.get('ResponseAccuracy', {}).get('Score', 0) == 1 else 0.5,  # Partial credit
-        'response_completeness': 1 if qna_details.get('ResponseCompleteness', {}).get('Score', 0) == 1 else 0.5,  # Partial credit
-        'confidence': 1 if qna_details.get('ConfidenceLevel', {}).get('Score', 0) == 1 else 0.7  # More forgiving
-    }
-    qna_score = sum(qna_scores.values()) / len(qna_scores) * 2  # Convert to 0-2 scale
-    
-    # Debug logging with raw QnA data
-    logger.info(f"Raw QnA data:")
-    logger.info(f"  ResponseAccuracy Score: {qna_details.get('ResponseAccuracy', {}).get('Score', 'NOT_FOUND')}")
-    logger.info(f"  ResponseCompleteness Score: {qna_details.get('ResponseCompleteness', {}).get('Score', 'NOT_FOUND')}")
-    logger.info(f"  ConfidenceLevel Score: {qna_details.get('ConfidenceLevel', {}).get('Score', 'NOT_FOUND')}")
-    logger.info(f"QnA scores: {qna_scores}")
-    logger.info(f"Sum: {sum(qna_scores.values())}, Avg: {sum(qna_scores.values()) / len(qna_scores)}, Final QnA score: {qna_score}/2")
-    
-    # Calculate total score (0-10 scale)
-    total_score = comm_score + teaching_score + qna_score
-    
-    # Debug logging
-    logger.info(f"Final score calculation: {comm_score:.2f} + {teaching_score:.2f} + {qna_score:.2f} = {total_score:.2f}/10")
-    
-    # More forgiving assessment bands aligned with human feedback
-    if total_score >= 8.0:  # Lowered from 8.5
-        assessment = "Excellent"
-        color = "#2ecc71"  # Green
-        icon = "✅"
-        description = "Outstanding performance across all metrics"
-    elif total_score >= 6.5:  # Lowered from 7.0
-        assessment = "Good"
-        color = "#27ae60"  # Darker green
-        icon = "✅"
-        description = "Strong performance with minor areas for improvement"
-    elif total_score >= 5.0:  # Lowered from 5.5
-        assessment = "Acceptable"
-        color = "#f1c40f"  # Yellow
-        icon = "✅"  # Changed from ⚠️ to ✅ since this should be passing
-        description = "Solid performance with some areas for improvement"
-    elif total_score >= 3.5:  # Lowered from 4.0
-        assessment = "Needs Improvement"
-        color = "#e67e22"  # Orange
-        icon = "⚠️"
-        description = "Several areas need improvement but shows potential"
-    else:
-        assessment = "Poor"
-        color = "#e74c3c"  # Red
-        icon = "❌"
-        description = "Major improvements needed across multiple areas"
-    
-    # Generate reasons based on component scores with more positive framing
-    reasons = []
-    if teaching_score >= 3.2:  # 80% of teaching metrics passed
-        reasons.append("Strong teaching methodology and content delivery")
-    elif teaching_score >= 2.4:  # 60% of teaching metrics
-        reasons.append("Solid teaching approach with good fundamentals")
-    
-    if comm_score >= 2.4:  # 80% of communication metrics
-        reasons.append("Effective communication skills")
-    elif comm_score >= 1.8:  # 60% of communication metrics  
-        reasons.append("Good communication with room for refinement")
-    
-    if qna_score >= 1.6:  # 80% of QnA metrics
-        reasons.append("Good question handling capabilities")
-    elif qna_score >= 1.2:  # 60% of QnA metrics
-        reasons.append("Adequate question handling skills")
-    
-    # If overall score is good but individual components have issues
-    if total_score >= 5.5 and len(reasons) < 2:
-        reasons.append("Demonstrates core teaching competencies")
-    
-    # Generate strengths and concerns with more balanced view
-    strengths = []
-    concerns = []
-    
-    # Teaching strengths (prioritize since it's most important)
-    if teaching_scores['content_accuracy'] == 1:
-        strengths.append("Demonstrates strong subject matter expertise")
-    if teaching_scores['examples'] == 1:
-        strengths.append("Effectively uses practical examples and business context")
-    if teaching_scores['engagement'] == 1:
-        strengths.append("Shows good student engagement and interaction")
-    if teaching_scores['storytelling'] == 1:
-        strengths.append("Maintains cohesive and structured delivery")
-    if teaching_scores['professional_tone'] == 1:
-        strengths.append("Maintains professional and appropriate tone")
-    
-    # Communication strengths/concerns with graduated assessment
-    if comm_scores['fillers'] >= 0.7:
-        strengths.append("Maintains good speech fluency")
-    elif comm_scores['fillers'] < 0.5:
-        concerns.append("Could reduce use of filler words")
+    """Calculate hiring score with improved alignment to human feedback"""
+    try:
+        # Get component scores
+        comm_score = calculate_communication_score(metrics)
+        teaching_score = calculate_teaching_component_score(metrics)
+        qna_score = calculate_qna_score(metrics)
         
-    if comm_scores['errors'] >= 0.8:
-        strengths.append("Clear and accurate speech delivery")
-    elif comm_scores['errors'] < 0.6:
-        concerns.append("Could improve speech accuracy")
+        # Calculate total score (0-10 scale)
+        total_score = comm_score + teaching_score + qna_score
         
-    if comm_scores['pace'] >= 0.7:
-        if comm_scores['pace'] == 1.0:
-            strengths.append("Excellent speaking pace for learning")
+        # More nuanced assessment bands based on human feedback
+        if total_score >= 8.5:
+            assessment = "Outstanding"
+            color = "#2ecc71"  # Green
+            icon = "✅"
+            description = "Exceptional performance with strong teaching and communication skills"
+        elif total_score >= 7.5:
+            assessment = "Excellent"
+            color = "#27ae60"  # Darker green
+            icon = "✅"
+            description = "Strong performance with minor areas for improvement"
+        elif total_score >= 6.5:
+            assessment = "Good"
+            color = "#27ae60"  # Darker green
+            icon = "✅"
+            description = "Solid performance with some areas for improvement"
+        elif total_score >= 5.5:
+            assessment = "Acceptable"
+            color = "#f1c40f"  # Yellow
+            icon = "✅"
+            description = "Meets basic requirements with clear areas for improvement"
+        elif total_score >= 4.5:
+            assessment = "Needs Improvement"
+            color = "#e67e22"  # Orange
+            icon = "⚠️"
+            description = "Shows potential but requires significant improvement"
         else:
+            assessment = "Not Suitable"
+            color = "#e74c3c"  # Red
+            icon = "❌"
+            description = "Major improvements needed across multiple areas"
+        
+        # Generate reasons based on component scores with more nuanced assessment
+        reasons = []
+        
+        # Teaching assessment
+        if teaching_score >= 3.5:
+            reasons.append("Exceptional teaching methodology and content delivery")
+        elif teaching_score >= 3.0:
+            reasons.append("Strong teaching methodology and content delivery")
+        elif teaching_score >= 2.5:
+            reasons.append("Good teaching approach with solid fundamentals")
+        
+        # Communication assessment
+        if comm_score >= 3.5:
+            reasons.append("Excellent communication skills and delivery")
+        elif comm_score >= 3.0:
+            reasons.append("Strong communication skills")
+        elif comm_score >= 2.5:
+            reasons.append("Good communication with room for refinement")
+        
+        # QnA assessment
+        if qna_score >= 1.8:
+            reasons.append("Excellent question handling capabilities")
+        elif qna_score >= 1.5:
+            reasons.append("Strong question handling capabilities")
+        elif qna_score >= 1.2:
+            reasons.append("Good question handling with some room for improvement")
+        
+        # Generate strengths and concerns
+        strengths = []
+        concerns = []
+        
+        # Teaching strengths/concerns
+        if teaching_score >= 3.0:
+            strengths.append("Demonstrates strong subject matter expertise")
+            strengths.append("Effectively uses practical examples and business context")
+        elif teaching_score >= 2.5:
+            strengths.append("Shows good understanding of subject matter")
+            strengths.append("Uses relevant examples in teaching")
+        
+        if teaching_score < 2.5:
+            concerns.append("Could enhance subject matter depth")
+            concerns.append("More practical examples would strengthen delivery")
+        
+        # Communication strengths/concerns
+        if comm_score >= 3.0:
+            strengths.append("Maintains good speech fluency")
+            strengths.append("Clear and accurate speech delivery")
+            strengths.append("Good voice modulation and variety")
+        elif comm_score >= 2.5:
             strengths.append("Generally good speaking pace")
-    else:
-        if wpm > 160:
-            concerns.append("Speaking pace could be slower for better comprehension")
-        else:
-            concerns.append("Speaking pace needs adjustment")
-    
-    if comm_scores['pitch_variation'] >= 0.8:
-        strengths.append("Good voice modulation and variety")
-    elif comm_scores['pitch_variation'] < 0.6:
-        concerns.append("Could improve voice modulation for engagement")
-    
-    # QnA strengths/concerns
-    if qna_scores['response_accuracy'] == 1:
-        strengths.append("Provides accurate and reliable responses to questions")
-    if qna_scores['response_completeness'] == 1:
-        strengths.append("Gives comprehensive answers to student questions")
-    if qna_scores['confidence'] >= 0.8:
-        strengths.append("Shows confidence in handling questions")
-    
-    # Ensure we have at least some positive feedback if teaching is strong
-    if len(strengths) == 0 and teaching_score >= 2.4:
-        strengths.append("Shows solid teaching fundamentals")
+            strengths.append("Clear communication style")
         
-    # Ensure concerns are constructive, not just negative
-    if len(concerns) == 0 and total_score < 7.0:
-        concerns.append("Continue developing communication techniques for even better delivery")
-    
-    return {
-        "score": round(total_score),
-        "assessment": assessment,
-        "color": color,
-        "icon": icon,
-        "description": description,
-        "reasons": reasons,
-        "strengths": strengths,
-        "concerns": concerns,
-        "component_scores": {
-            "communication": round(comm_score, 1),
-            "teaching": round(teaching_score, 1),
-            "qna": round(qna_score, 1)
+        if comm_score < 2.5:
+            concerns.append("Could improve speech clarity and pace")
+            concerns.append("Voice modulation could be enhanced")
+        
+        # QnA strengths/concerns
+        if qna_score >= 1.5:
+            strengths.append("Provides accurate and reliable responses to questions")
+            strengths.append("Gives comprehensive answers to student questions")
+            strengths.append("Shows confidence in handling questions")
+        elif qna_score >= 1.2:
+            strengths.append("Generally handles questions well")
+            strengths.append("Provides adequate responses to student queries")
+        
+        if qna_score < 1.2:
+            concerns.append("Could improve question handling confidence")
+            concerns.append("More detailed responses would be beneficial")
+        
+        # Ensure balanced feedback
+        if len(strengths) == 0 and total_score >= 5.5:
+            strengths.append("Shows potential for improvement")
+            strengths.append("Basic teaching fundamentals are present")
+        
+        if len(concerns) == 0 and total_score < 7.5:
+            concerns.append("Continue developing teaching techniques for better delivery")
+            concerns.append("Further practice would enhance overall performance")
+        
+        return {
+            "score": round(total_score, 1),  # Keep one decimal place for more precision
+            "assessment": assessment,
+            "color": color,
+            "icon": icon,
+            "description": description,
+            "reasons": reasons,
+            "strengths": strengths,
+            "concerns": concerns,
+            "component_scores": {
+                "communication": round(comm_score, 1),
+                "teaching": round(teaching_score, 1),
+                "qna": round(qna_score, 1)
+            }
         }
-    }
+        
+    except Exception as e:
+        logger.error(f"Error in hiring score calculation: {e}")
+        return {
+            "score": 0,
+            "assessment": "Error",
+            "color": "#e74c3c",
+            "icon": "❌",
+            "description": "Error in score calculation",
+            "reasons": ["System error in evaluation"],
+            "strengths": [],
+            "concerns": ["Technical error prevented proper evaluation"],
+            "component_scores": {
+                "communication": 0,
+                "teaching": 0,
+                "qna": 0
+            }
+        }
 
 def main():
     try:
