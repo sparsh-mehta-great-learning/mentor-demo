@@ -80,13 +80,13 @@ TEACHING_METRIC_WEIGHTS = {
     'communication': 0.15         # Communication is equally important as teaching
 }
 
-# More realistic assessment thresholds aligned with new scoring
+# More realistic assessment thresholds aligned with human feedback
 TEACHING_ASSESSMENT_THRESHOLDS = {
-    'excellent': 8.5,   # 85% or above (8.5/10)
-    'good': 7.0,       # 70% or above (7.0/10) 
-    'acceptable': 5.5,  # 55% or above (5.5/10)
-    'needs_improvement': 4.0,  # 40% or above (4.0/10)
-    'poor': 0.0        # Below 40%
+    'excellent': 8.0,   # 80% or above (8.0/10) - Lowered from 8.5
+    'good': 6.5,       # 65% or above (6.5/10) - Lowered from 7.0
+    'acceptable': 5.0,  # 50% or above (5.0/10) - Lowered from 5.5
+    'needs_improvement': 3.5,  # 35% or above (3.5/10) - Lowered from 4.0
+    'poor': 0.0        # Below 35%
 }
 
 def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_name=SHEET_NAME):
@@ -143,7 +143,7 @@ def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_
         accent_info = audio_features.get("accent_classification", {})
         accent = accent_info.get("accent", "")
         accent_confidence = accent_info.get("confidence", "")
-        accent_score = 1 if float(accent_confidence or 0) > 0.7 else 0
+        accent_score = 1 if float(accent_confidence or 0) > 0.4 else 0  # Lowered from 0.7 to 0.4 for more forgiving assessment
 
         # --- Confidence Assessment ---
         fluency_data = speech_metrics.get("fluency", {})
@@ -177,7 +177,7 @@ def append_metrics_to_sheet(evaluation_data, filename, sheet_id=SHEET_ID, sheet_
         speed_accepted = 1 if 120 <= float(words_per_minute or 0) <= 180 else 0
         fillers_accepted = 1 if float(fillers_per_min or 0) <= 3 else 0
         errors_accepted = 1 if float(errors_per_min or 0) <= 1 else 0
-        pitch_accepted = 1 if float(pitch_variation or 0) >= 20 else 0
+        pitch_accepted = 1 if float(pitch_variation or 0) >= 15 else 0
 
         # --- Teaching Analysis (flatten all categories) ---
         concept_flat = {}
@@ -764,17 +764,18 @@ class ContentAnalyzer:
                     response = self.client.chat.completions.create(
                         model="gpt-4o-mini",  # Using GPT-4 for better analysis
                         messages=[
-                            {"role": "system", "content": """You are a strict teaching evaluator focusing on core teaching competencies.
+                            {"role": "system", "content": """                             You are a balanced teaching evaluator focusing on core teaching competencies.
                              For each assessment point, you MUST include specific timestamps [MM:SS] from the transcript.
                              Never use [00:00] as a placeholder - only use actual timestamps from the transcript.
                              Each citation must include both the timestamp and a relevant quote showing evidence.
                              
-                             Score of 1 requires meeting ALL criteria below with clear evidence.
-                             Score of 0 if ANY major teaching deficiency is present.
+                             Score of 1 if MOST core requirements are met with reasonable evidence.
+                             Score of 0 only if MULTIPLE significant teaching deficiencies are present.
+                             Consider that some minor issues are normal in teaching demos.
                              
                              Citations format: "[MM:SS] Exact quote from transcript showing evidence"
                              
-                             Maintain high standards and require clear evidence of quality teaching."""},
+                             Maintain fair standards and focus on overall teaching effectiveness."""},
                             {"role": "user", "content": prompt}
                         ],
                         temperature=0.3
@@ -980,13 +981,13 @@ Balanced Scoring Criteria:
 
 Subject Matter Accuracy:
 ✓ Score 1 if MOST:
-- Shows good technical knowledge
-- Uses appropriate terminology
-- Explains concepts correctly
-✗ Score 0 if MULTIPLE:
-- Contains significant technical errors
-- Uses consistently incorrect terminology
-- Misrepresents core concepts
+- Shows adequate technical knowledge (doesn't need to be perfect)
+- Uses mostly appropriate terminology
+- Explains core concepts reasonably well
+✗ Score 0 ONLY if MULTIPLE:
+- Contains major technical errors that mislead learners
+- Consistently uses incorrect terminology
+- Completely misrepresents fundamental concepts
 
 First Principles Approach:
 ✓ Score 1 if MOST:
@@ -1000,13 +1001,13 @@ First Principles Approach:
 
 Examples and Business Context:
 ✓ Score 1 if MOST:
-- Provides relevant examples
-- Shows business application
-- Demonstrates practical value
-✗ Score 0 if MULTIPLE:
-- Lacks meaningful examples
-- Missing practical context
-- Examples don't aid learning
+- Provides some relevant examples (even basic ones count)
+- Shows some business or practical application
+- Demonstrates reasonable practical value
+✗ Score 0 ONLY if MULTIPLE:
+- Completely lacks any meaningful examples
+- No practical context provided at all
+- Examples actually confuse rather than help learning
 
 Cohesive Storytelling:
 ✓ Score 1 if MOST:
@@ -1020,15 +1021,15 @@ Cohesive Storytelling:
 
 Engagement and Interaction:
 ✓ Score 1 if MOST:
-- Shows good audience interaction
-- Encourages participation
-- Answers questions confidently and accurately
-- Maintains engagement throughout
-✗ Score 0 if MULTIPLE:
-- Limited interaction
-- Ignores audience
-- Shows uncertainty in answers
-- Fails to maintain engagement
+- Shows some audience interaction or engagement attempts
+- Makes reasonable effort to involve learners
+- Demonstrates willingness to answer questions
+- Generally maintains adequate engagement
+✗ Score 0 ONLY if MULTIPLE:
+- No interaction or engagement attempts at all
+- Completely ignores audience needs
+- Refuses to answer questions or shows hostility
+- Completely monotonous with no engagement effort
 
 Question Confidence Scoring:
 ✓ Score 1 if MOST:
@@ -1234,7 +1235,7 @@ Score 0 if ANY of the following are present:
                 },
                 "intonation": {
                     "pitch": audio_features.get("pitch_mean", 0),
-                    "pitchScore": 1 if 20 <= pitch_variation_coeff <= 40 else 0,
+                    "pitchScore": 1 if 15 <= pitch_variation_coeff <= 40 else 0,
                     "pitchVariation": pitch_variation_coeff,  # Use pitch_variation_coeff here
                     "patternScore": 1 if audio_features.get("variations_per_minute", 0) >= 120 else 0,
                     "risingPatterns": audio_features.get("rising_patterns", 0),
@@ -1918,7 +1919,7 @@ class MentorEvaluator:
                 },
                 "intonation": {
                     "pitch": audio_features.get("pitch_mean", 0),
-                    "pitchScore": 1 if 20 <= pitch_variation_coeff <= 40 else 0,
+                    "pitchScore": 1 if 15 <= pitch_variation_coeff <= 40 else 0,
                     "pitchVariation": pitch_variation_coeff,  # Use pitch_variation_coeff here
                     "patternScore": 1 if audio_features.get("variations_per_minute", 0) >= 120 else 0,
                     "risingPatterns": audio_features.get("rising_patterns", 0),
@@ -2351,7 +2352,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
                 """)
 
                 # Add visual indicator only for warning cases
-                if monotone_score > 0.4 or pitch_variation_coeff < 20 or pitch_variation_coeff > 40 or direction_changes < 300 or direction_changes > 600:
+                if monotone_score > 0.4 or pitch_variation_coeff < 15 or pitch_variation_coeff > 40 or direction_changes < 300 or direction_changes > 600:
                     st.warning("⚠️ Speech patterns need adjustment. Consider varying pitch and pace more naturally.")
 
             # Energy Metrics
@@ -3634,7 +3635,7 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
         speed_accepted = 120 <= words_per_minute <= 180
         fillers_accepted = fillers_per_min <= 3
         errors_accepted = errors_per_min <= 1
-        pitch_accepted = pitch_variation >= 20
+        pitch_accepted = pitch_variation >= 15
 
         # Create a table for metric acceptance status
         acceptance_data = [
@@ -3654,7 +3655,7 @@ def generate_pdf_report(evaluation_data: Dict[str, Any]) -> bytes:
             ['Pitch Variation',
              '✓' if pitch_accepted else '✗',
              f'{pitch_variation:.1f}%',
-             '≥ 20%']
+             '≥ 15%']
         ]
 
         # Create and style the acceptance table
@@ -4678,23 +4679,23 @@ def calculate_hiring_score(metrics: Dict[str, Any]) -> Dict[str, Any]:
     # Debug logging
     logger.info(f"Final score calculation: {comm_score:.2f} + {teaching_score:.2f} + {qna_score:.2f} = {total_score:.2f}/10")
     
-    # More nuanced assessment bands
-    if total_score >= 8.5:
+    # More forgiving assessment bands aligned with human feedback
+    if total_score >= 8.0:  # Lowered from 8.5
         assessment = "Excellent"
         color = "#2ecc71"  # Green
         icon = "✅"
         description = "Outstanding performance across all metrics"
-    elif total_score >= 7.0:
+    elif total_score >= 6.5:  # Lowered from 7.0
         assessment = "Good"
         color = "#27ae60"  # Darker green
         icon = "✅"
         description = "Strong performance with minor areas for improvement"
-    elif total_score >= 5.5:
+    elif total_score >= 5.0:  # Lowered from 5.5
         assessment = "Acceptable"
         color = "#f1c40f"  # Yellow
-        icon = "⚠️"
+        icon = "✅"  # Changed from ⚠️ to ✅ since this should be passing
         description = "Solid performance with some areas for improvement"
-    elif total_score >= 4.0:
+    elif total_score >= 3.5:  # Lowered from 4.0
         assessment = "Needs Improvement"
         color = "#e67e22"  # Orange
         icon = "⚠️"
@@ -4707,17 +4708,23 @@ def calculate_hiring_score(metrics: Dict[str, Any]) -> Dict[str, Any]:
     
     # Generate reasons based on component scores with more positive framing
     reasons = []
-    if teaching_score >= 4.0:  # 80% of teaching metrics passed
+    if teaching_score >= 3.2:  # 80% of teaching metrics passed
         reasons.append("Strong teaching methodology and content delivery")
+    elif teaching_score >= 2.4:  # 60% of teaching metrics
+        reasons.append("Solid teaching approach with good fundamentals")
+    
     if comm_score >= 2.4:  # 80% of communication metrics
         reasons.append("Effective communication skills")
     elif comm_score >= 1.8:  # 60% of communication metrics  
         reasons.append("Good communication with room for refinement")
+    
     if qna_score >= 1.6:  # 80% of QnA metrics
-        reasons.append("Excellent question handling capabilities")
+        reasons.append("Good question handling capabilities")
+    elif qna_score >= 1.2:  # 60% of QnA metrics
+        reasons.append("Adequate question handling skills")
     
     # If overall score is good but individual components have issues
-    if total_score >= 6.0 and len(reasons) < 2:
+    if total_score >= 5.5 and len(reasons) < 2:
         reasons.append("Demonstrates core teaching competencies")
     
     # Generate strengths and concerns with more balanced view
@@ -4772,11 +4779,11 @@ def calculate_hiring_score(metrics: Dict[str, Any]) -> Dict[str, Any]:
         strengths.append("Shows confidence in handling questions")
     
     # Ensure we have at least some positive feedback if teaching is strong
-    if len(strengths) == 0 and teaching_score >= 3.0:
+    if len(strengths) == 0 and teaching_score >= 2.4:
         strengths.append("Shows solid teaching fundamentals")
         
     # Ensure concerns are constructive, not just negative
-    if len(concerns) == 0 and total_score < 8.0:
+    if len(concerns) == 0 and total_score < 7.0:
         concerns.append("Continue developing communication techniques for even better delivery")
     
     return {
