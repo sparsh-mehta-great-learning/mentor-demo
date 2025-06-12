@@ -2684,7 +2684,7 @@ def display_evaluation(evaluation: Dict[str, Any]):
                     pitch_variation = float(intonation_data.get("pitchVariation", 0))  # This is already pitch_variation_coeff
                     pitch_mean = float(intonation_data.get("pitch", 0))
                     variation_coeff = pitch_variation  # Already calculated as coefficient in audio features
-                    intonation_score = 1 if 20 <= variation_coeff <= 40 else 0
+                    intonation_score = 1 if 15 <= variation_coeff <= 40 else 0
                     st.markdown("""
                         <div style='background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
                             <h4 style='color: #1f77b4; font-size: 16px;'>🎵 Voice Variety</h4>
