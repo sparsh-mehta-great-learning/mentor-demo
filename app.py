@@ -410,6 +410,43 @@ class AudioFeatureExtractor:
         except Exception as e:
             logger.warning(f"Could not initialize accent classifier: {e}")
             self.has_accent_classifier = False
+
+    def _detect_robotic_patterns(self, f0: np.ndarray, rms: np.ndarray, sr: int) -> Dict[str, float]:
+        """Detect patterns that indicate robotic or scripted speech"""
+        if len(f0) == 0:
+            return {
+                "robotic_score": 0.0,
+                "pitch_regularity": 0.0,
+                "amplitude_regularity": 0.0,
+                "rhythm_regularity": 0.0
+            }
+
+        # 1. Pitch regularity (robotic voices often have very regular pitch patterns)
+        pitch_diff = np.diff(f0)
+        pitch_regularity = 1.0 - min(1.0, np.std(pitch_diff) / np.mean(np.abs(pitch_diff)) if np.mean(np.abs(pitch_diff)) > 0 else 0)
+
+        # 2. Amplitude regularity (robotic voices often have very consistent volume)
+        amplitude_regularity = 1.0 - min(1.0, np.std(rms) / np.mean(rms) if np.mean(rms) > 0 else 0)
+
+        # 3. Rhythm regularity (robotic voices often have very regular timing)
+        # Calculate intervals between significant amplitude changes
+        amplitude_changes = np.where(np.abs(np.diff(rms)) > np.std(rms) * 0.5)[0]
+        if len(amplitude_changes) > 1:
+            intervals = np.diff(amplitude_changes)
+            rhythm_regularity = 1.0 - min(1.0, np.std(intervals) / np.mean(intervals) if np.mean(intervals) > 0 else 0)
+        else:
+            rhythm_regularity = 0.0
+
+        # Calculate overall robotic score
+        robotic_score = (pitch_regularity * 0.4 + amplitude_regularity * 0.3 + rhythm_regularity * 0.3)
+
+        return {
+            "robotic_score": float(robotic_score),
+            "pitch_regularity": float(pitch_regularity),
+            "amplitude_regularity": float(amplitude_regularity),
+            "rhythm_regularity": float(rhythm_regularity)
+        }
+
     def _analyze_pauses(self, silent_frames, frame_time):
         """Analyze pauses with minimal memory usage."""
         pause_durations = []
@@ -551,16 +588,8 @@ class AudioFeatureExtractor:
             # Calculate final monotone score (0-1, higher means more monotonous)
             monotone_score = (variation_factor * 0.4 + range_factor * 0.3 + changes_factor * 0.3)
             
-            # Log the factors for debugging
-            logger.info(f"""Monotone score calculation:
-                Pitch variation coeff: {pitch_variation_coeff:.2f}
-                Variation factor: {variation_factor:.2f}
-                Range ratio: {range_ratio:.2f}
-                Range factor: {range_factor:.2f}
-                Changes per minute: {changes_per_minute:.2f}
-                Changes factor: {changes_factor:.2f}
-                Final monotone score: {monotone_score:.2f}
-            """)
+            # Detect robotic patterns
+            robotic_patterns = self._detect_robotic_patterns(valid_f0, rms, sr)
             
             # Calculate pauses per minute
             rms_db = librosa.amplitude_to_db(rms, ref=np.max)
@@ -583,7 +612,7 @@ class AudioFeatureExtractor:
                 "pitch_std": pitch_std,
                 "pitch_range": pitch_range,
                 "pitch_variation_coeff": pitch_variation_coeff,
-                "monotone_score": monotone_score,  # Added monotone score to output
+                "monotone_score": monotone_score,
                 "mean_amplitude": mean_amplitude,
                 "amplitude_deviation": float(np.std(rms) / np.mean(rms)) if np.mean(rms) > 0 else 0,
                 "pauses_per_minute": pauses_per_minute,
@@ -592,7 +621,11 @@ class AudioFeatureExtractor:
                 "falling_patterns": int(np.sum(np.diff(valid_f0) < 0)) if len(valid_f0) > 1 else 0,
                 "variations_per_minute": float(len(valid_f0) / (len(audio) / sr / 60)) if len(audio) > 0 else 0,
                 "direction_changes_per_min": changes_per_minute,
-                "accent_classification": accent_info
+                "accent_classification": accent_info,
+                "robotic_score": robotic_patterns["robotic_score"],
+                "pitch_regularity": robotic_patterns["pitch_regularity"],
+                "amplitude_regularity": robotic_patterns["amplitude_regularity"],
+                "rhythm_regularity": robotic_patterns["rhythm_regularity"]
             }
             
         except Exception as e:
@@ -916,7 +949,23 @@ Required JSON response format:
     "Concept Assessment": {{
         "Subject Matter Accuracy": {{
             "Score": 0 or 1,
-            "Citations": ["[MM:SS] Exact quote showing evidence"]
+            "Citations": ["[MM:SS] Exact quote showing evidence"],
+            "TechnicalAccuracy": {{
+                "Score": 0 or 1,
+                "Citations": ["[MM:SS] Exact quote showing evidence"],
+                "Definitions": {{
+                    "Score": 0 or 1,
+                    "Citations": ["[MM:SS] Exact quote showing evidence"]
+                }},
+                "MathematicalConcepts": {{
+                    "Score": 0 or 1,
+                    "Citations": ["[MM:SS] Exact quote showing evidence"]
+                }},
+                "TechnicalTerms": {{
+                    "Score": 0 or 1,
+                    "Citations": ["[MM:SS] Exact quote showing evidence"]
+                }}
+            }}
         }},
         "First Principles Approach": {{
             "Score": 0 or 1,
@@ -988,6 +1037,41 @@ Subject Matter Accuracy:
 - Contains major technical errors that mislead learners
 - Consistently uses incorrect terminology
 - Completely misrepresents fundamental concepts
+
+Technical Accuracy Assessment:
+✓ Score 1 if ALL:
+- Definitions are mathematically and technically correct
+- Mathematical concepts are explained accurately
+- Technical terms are used with proper meaning
+- No fundamental misconceptions in explanations
+
+✗ Score 0 if ANY:
+- Incorrect definition of fundamental concepts (e.g., cosine similarity, matrix operations)
+- Mathematical errors in explanations
+- Misuse of technical terminology
+- Fundamental misconceptions that could mislead learners
+
+Common Technical Concepts to Verify:
+1. Mathematical Concepts:
+   - Vector operations
+   - Matrix operations
+   - Statistical measures
+   - Probability concepts
+   - Optimization methods
+
+2. Technical Definitions:
+   - Cosine similarity
+   - Euclidean distance
+   - Gradient descent
+   - Neural networks
+   - Machine learning algorithms
+
+3. Technical Terms:
+   - Accuracy vs Precision
+   - Bias vs Variance
+   - Overfitting vs Underfitting
+   - Supervised vs Unsupervised learning
+   - Classification vs Regression
 
 First Principles Approach:
 ✓ Score 1 if MOST:
@@ -1090,44 +1174,52 @@ Important:
 - Use specific evidence from transcript
 - Balance between being overly strict and too lenient
 
-Question Handling Assessment Criteria (ALL must be met for score of 1):
+Question Handling Assessment Criteria (for 30-40 minute demo sessions):
 
-1. Response Accuracy (Must meet ALL):
-   - Technical information must be 100% accurate
-   - All factual statements must be verifiable
-   - No misleading or ambiguous information
-   - Citations must show clear evidence of accurate responses
+1. Response Accuracy (Score 1 if MOST):
+   - Technical information is generally accurate
+   - Most factual statements are verifiable
+   - Minor inaccuracies are acceptable if corrected
+   - Overall demonstrates good understanding
 
-2. Response Completeness (Must meet ALL):
-   - Must address ALL parts of each question
-   - Must provide necessary context
-   - Must include relevant examples where appropriate
-   - No partial or incomplete answers accepted
+2. Response Completeness (Score 1 if MOST):
+   - Addresses main points of questions
+   - Provides reasonable context
+   - Includes examples when appropriate
+   - Some minor omissions are acceptable
 
-3. Confidence Level (Must meet ALL):
-   - Clear, authoritative delivery
-   - No hesitation or uncertainty in responses
-   - Confident handling of follow-up questions
-   - Maintains professional tone throughout
+3. Confidence Level (Score 1 if MOST):
+   - Generally clear and confident delivery
+   - Occasional hesitation is acceptable
+   - Handles most follow-up questions well
+   - Maintains professional tone
 
 4. Response Time:
-   - Must respond within 3-5 seconds of question
-   - Longer response times must be justified by question complexity
-   - Must acknowledge question immediately even if full response needs time
+   - Responds within reasonable time (5-10 seconds)
+   - Longer responses are acceptable for complex questions
+   - Acknowledges questions promptly
+   - Takes time to think when needed
 
-5. Clarification Skills (Must meet ALL):
-   - Asks probing questions when needed
-   - Confirms understanding before answering
-   - Reframes complex questions effectively
-   - Ensures question intent is fully understood
+5. Clarification Skills (Score 1 if MOST):
+   - Asks clarifying questions when needed
+   - Confirms understanding when appropriate
+   - Can reframe complex questions
+   - Shows effort to understand questions
 
-Score 0 if ANY of the following are present:
-- Any technical inaccuracy
-- Incomplete or partial answers
+Score 0 if MULTIPLE of the following are present:
+- Multiple major technical inaccuracies
+- Consistently incomplete answers
 - Excessive hesitation or uncertainty
-- Failure to ask clarifying questions when needed
-- Missing examples or context
-- Delayed responses without justification
+- Repeated failure to understand questions
+- Complete lack of examples or context
+- Consistently delayed responses without justification
+
+Remember:
+- This is a 30-40 minute demo session
+- Some minor issues are normal and acceptable
+- Focus on overall effectiveness
+- Consider the natural flow of conversation
+- Allow for reasonable pauses and thinking time
 """
 
         return prompt_template.format(
@@ -1156,11 +1248,13 @@ Score 0 if ANY of the following are present:
                         {"role": "system", "content": """Analyze the speech transcript for:
                         1. Filler words (um, uh, like, you know, etc.)
                         2. Speech errors (repeated words, incomplete sentences, grammatical mistakes)
+                        3. Script-like patterns (very structured responses, lack of natural flow)
                         
                         Return a JSON with:
                         {
                             "fillers": [{"word": "filler_word", "count": number}],
-                            "errors": [{"type": "error_type", "text": "error_context", "count": number}]
+                            "errors": [{"type": "error_type", "text": "error_context", "count": number}],
+                            "script_indicators": [{"type": "indicator_type", "text": "context", "count": number}]
                         }
                         
                         Be thorough but don't over-count. Context matters."""},
@@ -1180,6 +1274,10 @@ Score 0 if ANY of the following are present:
                 total_errors = sum(item["count"] for item in analysis["errors"])
                 errors_per_minute = float(total_errors / duration_minutes if duration_minutes > 0 else 0)
                 
+                # Calculate script indicators
+                script_indicators = analysis.get("script_indicators", [])
+                script_score = min(1.0, sum(item["count"] for item in script_indicators) / 5.0)  # Normalize to 0-1
+                
             except Exception as e:
                 logger.error(f"LLM analysis failed: {e}")
                 # Fallback to simpler detection if LLM fails
@@ -1187,9 +1285,11 @@ Score 0 if ANY of the following are present:
                 total_errors = len(re.findall(r'\b(\w+)\s+\1\b', transcript.lower()))
                 fillers_per_minute = float(total_fillers / duration_minutes if duration_minutes > 0 else 0)
                 errors_per_minute = float(total_errors / duration_minutes if duration_minutes > 0 else 0)
+                script_score = 0.0
                 analysis = {
                     "fillers": [{"word": "various", "count": total_fillers}],
-                    "errors": [{"type": "repeated words", "count": total_errors}]
+                    "errors": [{"type": "repeated words", "count": total_errors}],
+                    "script_indicators": []
                 }
 
             # Set thresholds
@@ -1201,6 +1301,15 @@ Score 0 if ANY of the following are present:
             
             # Get pitch variation coefficient from audio features
             pitch_variation_coeff = audio_features.get("pitch_variation_coeff", 0)
+            
+            # Get robotic voice metrics
+            robotic_score = audio_features.get("robotic_score", 0)
+            pitch_regularity = audio_features.get("pitch_regularity", 0)
+            amplitude_regularity = audio_features.get("amplitude_regularity", 0)
+            rhythm_regularity = audio_features.get("rhythm_regularity", 0)
+            
+            # Calculate naturalness score (inverse of robotic score)
+            naturalness_score = 1.0 - robotic_score
             
             return {
                 "speed": {
@@ -1236,7 +1345,7 @@ Score 0 if ANY of the following are present:
                 "intonation": {
                     "pitch": audio_features.get("pitch_mean", 0),
                     "pitchScore": 1 if 15 <= pitch_variation_coeff <= 40 else 0,
-                    "pitchVariation": pitch_variation_coeff,  # Use pitch_variation_coeff here
+                    "pitchVariation": pitch_variation_coeff,
                     "patternScore": 1 if audio_features.get("variations_per_minute", 0) >= 120 else 0,
                     "risingPatterns": audio_features.get("rising_patterns", 0),
                     "fallingPatterns": audio_features.get("falling_patterns", 0),
@@ -1248,6 +1357,15 @@ Score 0 if ANY of the following are present:
                     "meanAmplitude": audio_features.get("mean_amplitude", 0),
                     "amplitudeDeviation": audio_features.get("amplitude_deviation", 0),
                     "variationScore": 1 if 0.05 <= audio_features.get("amplitude_deviation", 0) <= 1.0 else 0
+                },
+                "naturalness": {
+                    "score": naturalness_score,
+                    "roboticScore": robotic_score,
+                    "pitchRegularity": pitch_regularity,
+                    "amplitudeRegularity": amplitude_regularity,
+                    "rhythmRegularity": rhythm_regularity,
+                    "scriptScore": script_score,
+                    "isRobotic": robotic_score > 0.7 or (robotic_score > 0.5 and script_score > 0.5)
                 }
             }
 
@@ -1840,11 +1958,13 @@ class MentorEvaluator:
                         {"role": "system", "content": """Analyze the speech transcript for:
                         1. Filler words (um, uh, like, you know, etc.)
                         2. Speech errors (repeated words, incomplete sentences, grammatical mistakes)
+                        3. Script-like patterns (very structured responses, lack of natural flow)
                         
                         Return a JSON with:
                         {
                             "fillers": [{"word": "filler_word", "count": number}],
-                            "errors": [{"type": "error_type", "text": "error_context", "count": number}]
+                            "errors": [{"type": "error_type", "text": "error_context", "count": number}],
+                            "script_indicators": [{"type": "indicator_type", "text": "context", "count": number}]
                         }
                         
                         Be thorough but don't over-count. Context matters."""},
@@ -1864,6 +1984,10 @@ class MentorEvaluator:
                 total_errors = sum(item["count"] for item in analysis["errors"])
                 errors_per_minute = float(total_errors / duration_minutes if duration_minutes > 0 else 0)
                 
+                # Calculate script indicators
+                script_indicators = analysis.get("script_indicators", [])
+                script_score = min(1.0, sum(item["count"] for item in script_indicators) / 5.0)  # Normalize to 0-1
+                
             except Exception as e:
                 logger.error(f"LLM analysis failed: {e}")
                 # Fallback to simpler detection if LLM fails
@@ -1871,9 +1995,11 @@ class MentorEvaluator:
                 total_errors = len(re.findall(r'\b(\w+)\s+\1\b', transcript.lower()))
                 fillers_per_minute = float(total_fillers / duration_minutes if duration_minutes > 0 else 0)
                 errors_per_minute = float(total_errors / duration_minutes if duration_minutes > 0 else 0)
+                script_score = 0.0
                 analysis = {
                     "fillers": [{"word": "various", "count": total_fillers}],
-                    "errors": [{"type": "repeated words", "count": total_errors}]
+                    "errors": [{"type": "repeated words", "count": total_errors}],
+                    "script_indicators": []
                 }
 
             # Set thresholds
@@ -1885,6 +2011,15 @@ class MentorEvaluator:
             
             # Get pitch variation coefficient from audio features
             pitch_variation_coeff = audio_features.get("pitch_variation_coeff", 0)
+            
+            # Get robotic voice metrics
+            robotic_score = audio_features.get("robotic_score", 0)
+            pitch_regularity = audio_features.get("pitch_regularity", 0)
+            amplitude_regularity = audio_features.get("amplitude_regularity", 0)
+            rhythm_regularity = audio_features.get("rhythm_regularity", 0)
+            
+            # Calculate naturalness score (inverse of robotic score)
+            naturalness_score = 1.0 - robotic_score
             
             return {
                 "speed": {
@@ -1920,7 +2055,7 @@ class MentorEvaluator:
                 "intonation": {
                     "pitch": audio_features.get("pitch_mean", 0),
                     "pitchScore": 1 if 15 <= pitch_variation_coeff <= 40 else 0,
-                    "pitchVariation": pitch_variation_coeff,  # Use pitch_variation_coeff here
+                    "pitchVariation": pitch_variation_coeff,
                     "patternScore": 1 if audio_features.get("variations_per_minute", 0) >= 120 else 0,
                     "risingPatterns": audio_features.get("rising_patterns", 0),
                     "fallingPatterns": audio_features.get("falling_patterns", 0),
@@ -1932,6 +2067,15 @@ class MentorEvaluator:
                     "meanAmplitude": audio_features.get("mean_amplitude", 0),
                     "amplitudeDeviation": audio_features.get("amplitude_deviation", 0),
                     "variationScore": 1 if 0.05 <= audio_features.get("amplitude_deviation", 0) <= 1.0 else 0
+                },
+                "naturalness": {
+                    "score": naturalness_score,
+                    "roboticScore": robotic_score,
+                    "pitchRegularity": pitch_regularity,
+                    "amplitudeRegularity": amplitude_regularity,
+                    "rhythmRegularity": rhythm_regularity,
+                    "scriptScore": script_score,
+                    "isRobotic": robotic_score > 0.7 or (robotic_score > 0.5 and script_score > 0.5)
                 }
             }
 
@@ -4541,6 +4685,11 @@ def calculate_communication_score(metrics: Dict[str, Any]) -> float:
         errors_per_min = speech_metrics.get('fluency', {}).get('errorsPerMin', 0)
         words_per_minute = speech_metrics.get('speed', {}).get('wpm', 0)
         
+        # Get naturalness metrics
+        naturalness = speech_metrics.get('naturalness', {})
+        robotic_score = naturalness.get('roboticScore', 0)
+        script_score = naturalness.get('scriptScore', 0)
+        
         # More nuanced scoring for each metric
         comm_score_components = [
             # Monotone score (voice variety)
@@ -4559,32 +4708,29 @@ def calculate_communication_score(metrics: Dict[str, Any]) -> float:
             max(0, 1 - (errors_per_min / 1.2)),  # Gradual decrease from 1 to 0
             
             # Speaking pace (optimal range)
-            max(0, 1 - abs(words_per_minute - 145) / 35)  # Peak at 145 WPM, gradual decrease
+            max(0, 1 - abs(words_per_minute - 145) / 35),  # Peak at 145 WPM, gradual decrease
+            
+            # Naturalness (inverse of robotic score)
+            max(0, 1 - robotic_score),  # Linear scale from 1 to 0
+            
+            # Script-like patterns
+            max(0, 1 - script_score)  # Linear scale from 1 to 0
         ]
         
         # Adjusted weights based on human feedback
-        weights = [0.2, 0.2, 0.15, 0.15, 0.15, 0.15]  # Sum to 1
+        weights = [0.15, 0.15, 0.1, 0.1, 0.1, 0.1, 0.15, 0.15]  # Sum to 1
         
         # Calculate weighted score
         weighted_score = sum(score * weight for score, weight in zip(comm_score_components, weights))
         
-        # Convert to 0-4 scale
-        final_score = weighted_score * 4
+        # Apply penalty for robotic voice
+        if robotic_score > 0.7 or (robotic_score > 0.5 and script_score > 0.5):
+            weighted_score *= 0.5  # 50% penalty for clearly robotic voice
         
-        # Log detailed scoring for debugging
-        logger.info(f"Communication score components:")
-        logger.info(f"  Monotone: {comm_score_components[0]:.2f} (score: {monotone_score:.2f})")
-        logger.info(f"  Pitch Variation: {comm_score_components[1]:.2f} (variation: {pitch_variation:.2f}%)")
-        logger.info(f"  Direction Changes: {comm_score_components[2]:.2f} (changes: {direction_changes:.2f}/min)")
-        logger.info(f"  Fillers: {comm_score_components[3]:.2f} (fillers: {fillers_per_min:.2f}/min)")
-        logger.info(f"  Errors: {comm_score_components[4]:.2f} (errors: {errors_per_min:.2f}/min)")
-        logger.info(f"  Pace: {comm_score_components[5]:.2f} (WPM: {words_per_minute:.2f})")
-        logger.info(f"Final communication score: {final_score:.2f}/4")
-        
-        return final_score
+        return min(1.0, max(0.0, weighted_score))
         
     except Exception as e:
-        logger.error(f"Error in communication score calculation: {e}")
+        logger.error(f"Error calculating communication score: {e}")
         return 0.0
 
 def calculate_teaching_component_score(metrics: Dict[str, Any]) -> float:
